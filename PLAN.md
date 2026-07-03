@@ -53,16 +53,35 @@ packages/
     src/
       types.ts
       recorder.ts
+      stream-detector.ts
       sources/http.ts
       sinks/file.ts
       sinks/stdout.ts
       sinks/s3.ts
   bilibili/           # @stream-fetcher/bilibili
   huya/               # @stream-fetcher/huya
-  twitch/             # @stream-fetcher/twitch
-  youtube/            # @stream-fetcher/youtube (experimental)
-  douyu/              # @stream-fetcher/douyu (experimental)
+  twitch/             # @stream-fetcher/twitch (on hold)
+  youtube/            # @stream-fetcher/youtube (on hold)
+  douyu/              # @stream-fetcher/douyu (on hold)
 ```
+
+## Stream Start Detection
+
+Cross-cutting helper in core that polls a source until it produces a stream.
+
+```ts
+interface DetectorOptions {
+  intervalMs: number;
+  maxAttempts?: number;
+  signal?: AbortSignal;
+}
+
+interface StreamDetector {
+  waitForLive(source: Source, options: DetectorOptions): Promise<ReadableStream<Uint8Array>>;
+}
+```
+
+Platform-specific live checks can be provided by resolvers; the detector uses them generically.
 
 ## Platform Support
 
@@ -75,8 +94,6 @@ interface Resolver {
   resolve(url: string, options?: unknown): Promise<Source>;
 }
 ```
-
-Each platform lives in its own workspace package. Core stays platform-agnostic.
 
 Implementation order: Bilibili → Huya. YouTube / Twitch on hold.
 
