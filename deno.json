@@ -8,6 +8,7 @@
     "packages/huya"
   ],
   "imports": {
-    "@std/assert": "jsr:@std/assert@1"
+    "@std/assert": "jsr:@std/assert@1",
+    "md5": "npm:md5@2"
   }
 }

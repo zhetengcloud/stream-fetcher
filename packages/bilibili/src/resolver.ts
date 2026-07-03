@@ -1,5 +1,6 @@
 import type { Resolver, Source } from "@stream-fetcher/core/types";
 import { HttpSource } from "@stream-fetcher/core/sources/http";
+import { messages } from "./messages.ts";
 
 const BILIBILI_API_BASE = "https://api.live.bilibili.com";
 const BILIBILI_REFERER = "https://live.bilibili.com";
@@ -47,7 +48,7 @@ export class BilibiliResolver implements Resolver<BilibiliResolverOptions> {
     options: BilibiliResolverOptions = {},
   ): Promise<Source> {
     const match = this.#roomPattern.exec(url);
-    if (!match) throw new Error(`Invalid Bilibili room URL: ${url}`);
+    if (!match) throw new Error(messages.errors.invalidUrl(url));
     const roomId = match[1];
 
     const {
@@ -102,19 +103,17 @@ export class BilibiliResolver implements Resolver<BilibiliResolverOptions> {
 
     const response = await fetch(apiUrl, { headers });
     if (!response.ok) {
-      throw new Error(`Bilibili playUrl request failed: ${response.status}`);
+      throw new Error(messages.errors.playUrlRequestFailed(response.status));
     }
 
     const data = (await response.json()) as PlayUrlResponse;
     if (data.code !== 0) {
-      throw new Error(
-        `Bilibili playUrl error: ${data.message ?? `code ${data.code}`}`,
-      );
+      throw new Error(messages.errors.playUrlError(data.message, data.code));
     }
 
     const urls = data.data?.durl;
     if (!urls || urls.length === 0) {
-      throw new Error("Bilibili stream URL not found; room may be offline");
+      throw new Error(messages.errors.streamUrlNotFound);
     }
 
     return urls[0].url;

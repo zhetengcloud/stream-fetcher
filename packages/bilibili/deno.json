@@ -2,7 +2,8 @@
   "name": "@stream-fetcher/bilibili",
   "version": "0.1.0",
   "exports": {
-    ".": "./mod.ts"
+    ".": "./mod.ts",
+    "./messages": "./src/messages.ts"
   },
   "imports": {
     "@stream-fetcher/core": "../core/mod.ts"

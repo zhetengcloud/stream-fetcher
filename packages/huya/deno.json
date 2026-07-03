@@ -1,7 +1,10 @@
 {
   "name": "@stream-fetcher/huya",
   "version": "0.1.0",
-  "exports": "./mod.ts",
+  "exports": {
+    ".": "./mod.ts",
+    "./messages": "./src/messages.ts"
+  },
   "imports": {
     "@stream-fetcher/core": "../core/mod.ts"
   }
