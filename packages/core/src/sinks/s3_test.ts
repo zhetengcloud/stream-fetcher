@@ -1,5 +1,5 @@
 import { assertEquals, assertExists } from "@std/assert";
-import { S3Sink } from "../sinks/s3.ts";
+import { S3Sink } from "@stream-fetcher/core/sinks/s3";
 
 interface CapturedRequest {
   method: string;

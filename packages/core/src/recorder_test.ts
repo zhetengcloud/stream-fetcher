@@ -5,8 +5,8 @@ import {
   Recorder,
   RecorderStatus,
   StdoutSink,
-} from "../mod.ts";
-import type { FileSystem, Sink, Source } from "../mod.ts";
+} from "@stream-fetcher/core";
+import type { FileSystem, Sink, Source } from "@stream-fetcher/core";
 
 function createInMemoryFs(): { fs: FileSystem; files: Map<string, Uint8Array> } {
   const files = new Map<string, Uint8Array>();

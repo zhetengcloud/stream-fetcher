@@ -1,5 +1,5 @@
-import type { Sink } from "../types.ts";
-import { signRequest } from "../utils/s3_sign.ts";
+import type { Sink } from "@stream-fetcher/core/types";
+import { signRequest } from "@stream-fetcher/core/utils/s3_sign";
 
 export interface S3SinkOptions {
   /** S3 endpoint, e.g. https://s3.amazonaws.com or https://oss-cn-hangzhou.aliyuncs.com */

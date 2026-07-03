@@ -1,4 +1,4 @@
-import type { Source } from "../types.ts";
+import type { Source } from "@stream-fetcher/core/types";
 
 /** Options for the generic HTTP(S) source. */
 export interface HttpSourceOptions {

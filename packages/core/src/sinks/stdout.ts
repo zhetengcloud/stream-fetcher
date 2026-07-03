@@ -1,4 +1,4 @@
-import type { Sink } from "../types.ts";
+import type { Sink } from "@stream-fetcher/core/types";
 
 /** Writes the stream to Deno's stdout. */
 export class StdoutSink implements Sink<undefined> {

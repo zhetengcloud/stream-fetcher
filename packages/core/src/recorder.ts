@@ -1,5 +1,5 @@
-import type { RecorderOptions, Source, Sink } from "./types.ts";
-import { RecorderStatus } from "./types.ts";
+import type { RecorderOptions, Source, Sink } from "@stream-fetcher/core/types";
+import { RecorderStatus } from "@stream-fetcher/core/types";
 
 /** Await a promise and ignore any error. Useful for cleanup. */
 function ignore(promise: Promise<unknown>): Promise<void> {

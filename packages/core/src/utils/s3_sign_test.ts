@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { signRequest } from "./s3_sign.ts";
+import { signRequest } from "@stream-fetcher/core/utils/s3_sign";
 
 Deno.test("signRequest produces an Authorization header", async () => {
   const headers = await signRequest({

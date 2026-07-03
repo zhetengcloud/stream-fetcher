@@ -1,4 +1,4 @@
-import type { FileSystem } from "../types.ts";
+import type { FileSystem } from "@stream-fetcher/core/types";
 
 /** Creates a FileSystem adapter backed by Deno APIs. */
 export function createDenoFileSystem(): FileSystem {

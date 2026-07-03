@@ -1,4 +1,4 @@
-import type { FileSystem, Sink } from "../types.ts";
+import type { FileSystem, Sink } from "@stream-fetcher/core/types";
 
 /** Options for the file sink. */
 export interface FileSinkOptions {

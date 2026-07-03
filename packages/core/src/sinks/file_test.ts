@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
-import { FileSink } from "../../mod.ts";
-import type { FileSystem } from "../../mod.ts";
+import { FileSink } from "@stream-fetcher/core";
+import type { FileSystem } from "@stream-fetcher/core";
 
 function createInMemoryFs(): { fs: FileSystem; files: Map<string, Uint8Array> } {
   const files = new Map<string, Uint8Array>();

@@ -1,9 +1,17 @@
 {
   "name": "@stream-fetcher/core",
   "version": "0.1.0",
-  "exports": "./mod.ts",
+  "exports": {
+    ".": "./mod.ts",
+    "./types": "./src/types.ts",
+    "./sources/http": "./src/sources/http.ts",
+    "./sinks/file": "./src/sinks/file.ts",
+    "./sinks/stdout": "./src/sinks/stdout.ts",
+    "./sinks/s3": "./src/sinks/s3.ts",
+    "./utils/s3_sign": "./src/utils/s3_sign.ts",
+    "./adapters/deno": "./src/adapters/deno.ts"
+  },
   "tasks": {
     "test": "deno test --allow-all"
-  },
-  "imports": {}
+  }
 }
