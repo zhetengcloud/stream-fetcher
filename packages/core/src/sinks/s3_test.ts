@@ -16,7 +16,7 @@ function createMockS3Server(): {
 
   return {
     requests,
-    async start() {
+    start(): Promise<{ url: URL; stop: () => Promise<void> }> {
       const server = Deno.serve({ port: 0 }, async (request) => {
         const body = new Uint8Array(await request.arrayBuffer());
         requests.push({
@@ -52,14 +52,16 @@ function createMockS3Server(): {
         return new Response("not found", { status: 404 });
       });
 
-      const url = new URL(`http://localhost:${(server.addr as Deno.NetAddr).port}`);
+      const url = new URL(
+        `http://localhost:${(server.addr as Deno.NetAddr).port}`,
+      );
 
-      return {
+      return Promise.resolve({
         url,
-        async stop() {
-          await server.shutdown();
+        stop() {
+          return server.shutdown();
         },
-      };
+      });
     },
   };
 }
@@ -91,10 +93,14 @@ Deno.test("S3Sink performs multipart upload to a mock S3 server", async () => {
 
     const parts = requests.filter((r) => r.url.includes("partNumber="));
     assertEquals(parts.length, 2);
-    assertEquals(parts[0].headers.get("authorization")?.startsWith("AWS4-HMAC-SHA256"), true);
+    assertEquals(
+      parts[0].headers.get("authorization")?.startsWith("AWS4-HMAC-SHA256"),
+      true,
+    );
 
     const complete = requests.find((r) =>
-      r.url.includes("uploadId=test-upload-id") && !r.url.includes("partNumber=")
+      r.url.includes("uploadId=test-upload-id") &&
+      !r.url.includes("partNumber=")
     );
     assertExists(complete);
     assertEquals(complete.method, "POST");

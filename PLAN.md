@@ -1,8 +1,10 @@
 # Stream Fetcher / Saver — Design Plan
 
-A minimal Deno/TS library that fetches a live stream and pipes it to file, S3/OSS, or stdout.
+A minimal Deno/TS library that fetches a live stream and pipes it to file,
+S3/OSS, or stdout.
 
 References:
+
 - [biliup/biliup](https://github.com/biliup/biliup)
 - [streamlink/streamlink](https://github.com/streamlink/streamlink)
 
@@ -74,7 +76,8 @@ packages/
 
 ## Stream Start Detection
 
-Planned cross-cutting helper in core that polls a source until it produces a stream.
+Planned cross-cutting helper in core that polls a source until it produces a
+stream.
 
 ```ts
 interface DetectorOptions {
@@ -84,7 +87,10 @@ interface DetectorOptions {
 }
 
 interface StreamDetector {
-  waitForLive(source: Source, options: DetectorOptions): Promise<ReadableStream<Uint8Array>>;
+  waitForLive(
+    source: Source,
+    options: DetectorOptions,
+  ): Promise<ReadableStream<Uint8Array>>;
 }
 ```
 
@@ -98,11 +104,11 @@ The library is designed for microservices / Kubernetes, not an end-user CLI.
 
 ## Milestones
 
-| M | Deliverable | Status |
-|---|-------------|--------|
+| M  | Deliverable                                            | Status  |
+| -- | ------------------------------------------------------ | ------- |
 | M1 | Core: interfaces, `HttpSource`, `FileSink`, `Recorder` | ✅ Done |
-| M2 | `S3Sink`, multi-sink tee, abort | ✅ Done |
-| M3 | Workspace migration + Bilibili + Huya resolvers | ✅ Done |
-| M4 | README + examples | 🚧 Next |
+| M2 | `S3Sink`, multi-sink tee, abort                        | ✅ Done |
+| M3 | Workspace migration + Bilibili + Huya resolvers        | ✅ Done |
+| M4 | README + examples                                      | 🚧 Next |
 
 **On hold:** YouTube / Twitch resolvers.

@@ -1,4 +1,4 @@
-import type { RecorderOptions, Source, Sink } from "@stream-fetcher/core/types";
+import type { RecorderOptions } from "@stream-fetcher/core/types";
 import { RecorderStatus } from "@stream-fetcher/core/types";
 
 /** Await a promise and ignore any error. Useful for cleanup. */

@@ -59,7 +59,10 @@ export interface DetectorOptions {
 
 /** Polls a source until it becomes live. */
 export interface StreamDetector {
-  waitForLive(source: Source, options: DetectorOptions): Promise<ReadableStream<Uint8Array>>;
+  waitForLive(
+    source: Source,
+    options: DetectorOptions,
+  ): Promise<ReadableStream<Uint8Array>>;
 }
 
 /** Runtime-specific filesystem abstraction for the file sink. */

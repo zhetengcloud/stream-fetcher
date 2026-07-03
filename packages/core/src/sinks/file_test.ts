@@ -2,31 +2,36 @@ import { assertEquals } from "@std/assert";
 import { FileSink } from "@stream-fetcher/core";
 import type { FileSystem } from "@stream-fetcher/core";
 
-function createInMemoryFs(): { fs: FileSystem; files: Map<string, Uint8Array> } {
+function createInMemoryFs(): {
+  fs: FileSystem;
+  files: Map<string, Uint8Array>;
+} {
   const files = new Map<string, Uint8Array>();
 
   const fs: FileSystem = {
-    async open(path: string): Promise<WritableStream<Uint8Array>> {
+    open(path: string): Promise<WritableStream<Uint8Array>> {
       const chunks: Uint8Array[] = [];
-      return new WritableStream<Uint8Array>({
-        write(chunk) {
-          chunks.push(chunk.slice());
-          return Promise.resolve();
-        },
-        close() {
-          const total = chunks.reduce((acc, c) => acc + c.length, 0);
-          const merged = new Uint8Array(total);
-          let offset = 0;
-          for (const c of chunks) {
-            merged.set(c, offset);
-            offset += c.length;
-          }
-          files.set(path, merged);
-          return Promise.resolve();
-        },
-      });
+      return Promise.resolve(
+        new WritableStream<Uint8Array>({
+          write(chunk) {
+            chunks.push(chunk.slice());
+            return Promise.resolve();
+          },
+          close() {
+            const total = chunks.reduce((acc, c) => acc + c.length, 0);
+            const merged = new Uint8Array(total);
+            let offset = 0;
+            for (const c of chunks) {
+              merged.set(c, offset);
+              offset += c.length;
+            }
+            files.set(path, merged);
+            return Promise.resolve();
+          },
+        }),
+      );
     },
-    async mkdir(): Promise<void> {
+    mkdir(): Promise<void> {
       return Promise.resolve();
     },
   };
@@ -45,5 +50,8 @@ Deno.test("FileSink writes chunks through the supplied FileSystem", async () => 
   await writer.write(new TextEncoder().encode("world"));
   await writer.close();
 
-  assertEquals(new TextDecoder().decode(files.get("/tmp/foo.bin")), "hello world");
+  assertEquals(
+    new TextDecoder().decode(files.get("/tmp/foo.bin")),
+    "hello world",
+  );
 });

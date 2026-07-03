@@ -31,7 +31,8 @@ export class HttpSource implements Source<HttpSourceOptions> {
     return this.#response.body;
   }
 
-  async close(): Promise<void> {
+  close(): Promise<void> {
     this.#response = null;
+    return Promise.resolve();
   }
 }

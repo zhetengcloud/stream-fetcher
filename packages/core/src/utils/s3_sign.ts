@@ -16,7 +16,9 @@ export interface SignRequestOptions {
   service: string;
 }
 
-export async function signRequest(options: SignRequestOptions): Promise<Headers> {
+export async function signRequest(
+  options: SignRequestOptions,
+): Promise<Headers> {
   const {
     method,
     url,
@@ -69,7 +71,12 @@ export async function signRequest(options: SignRequestOptions): Promise<Headers>
     await sha256Hex(new TextEncoder().encode(canonicalRequest)),
   ].join("\n");
 
-  const signingKey = await getSignatureKey(secretAccessKey, dateStamp, region, service);
+  const signingKey = await getSignatureKey(
+    secretAccessKey,
+    dateStamp,
+    region,
+    service,
+  );
   const signature = await hmacHex(signingKey, stringToSign);
 
   headers.set(

@@ -51,7 +51,7 @@ var hyPlayerConfig = {
 Deno.test("HuyaResolver resolves a room URL into a Source", async () => {
   const resolver = new HuyaResolver();
 
-  const server = Deno.serve({ port: 0 }, async (request) => {
+  const server = Deno.serve({ port: 0 }, (request) => {
     const url = new URL(request.url);
     if (url.pathname === "/testroom") {
       return new Response(ROOM_PAGE_TEMPLATE, {
@@ -90,7 +90,7 @@ Deno.test("HuyaResolver canHandle recognizes room URLs", () => {
 Deno.test("HuyaResolver prefers selected CDN", async () => {
   const resolver = new HuyaResolver();
 
-  const server = Deno.serve({ port: 0 }, async (request) => {
+  const server = Deno.serve({ port: 0 }, (request) => {
     const url = new URL(request.url);
     if (url.pathname === "/testroom") {
       return new Response(ROOM_PAGE_TEMPLATE, {
@@ -120,7 +120,7 @@ Deno.test("HuyaResolver prefers selected CDN", async () => {
 Deno.test("HuyaResolver rejects offline rooms", async () => {
   const resolver = new HuyaResolver();
 
-  const server = Deno.serve({ port: 0 }, async (request) => {
+  const server = Deno.serve({ port: 0 }, (request) => {
     const url = new URL(request.url);
     if (url.pathname === "/offline") {
       return new Response(
@@ -160,7 +160,7 @@ Deno.test("HuyaResolver rejects offline rooms", async () => {
 Deno.test("HuyaResolver rejects replays", async () => {
   const resolver = new HuyaResolver();
 
-  const server = Deno.serve({ port: 0 }, async (request) => {
+  const server = Deno.serve({ port: 0 }, (request) => {
     const url = new URL(request.url);
     if (url.pathname === "/replay") {
       return new Response(

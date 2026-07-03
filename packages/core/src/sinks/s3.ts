@@ -132,7 +132,8 @@ class S3MultipartClient {
 
     if (!response.ok) {
       throw new Error(
-        `createMultipartUpload failed: ${response.status} ${await response.text()}`,
+        `createMultipartUpload failed: ${response.status} ${await response
+          .text()}`,
       );
     }
 
@@ -213,7 +214,8 @@ class S3MultipartClient {
 
     if (!response.ok) {
       throw new Error(
-        `completeMultipartUpload failed: ${response.status} ${await response.text()}`,
+        `completeMultipartUpload failed: ${response.status} ${await response
+          .text()}`,
       );
     }
   }

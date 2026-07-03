@@ -4,7 +4,7 @@ import { BilibiliProtocol, BilibiliResolver } from "@stream-fetcher/bilibili";
 Deno.test("BilibiliResolver resolves a room URL into a Source", async () => {
   const resolver = new BilibiliResolver();
 
-  const server = Deno.serve({ port: 0 }, async (request) => {
+  const server = Deno.serve({ port: 0 }, (request) => {
     const url = new URL(request.url);
     if (url.pathname === "/room/v1/Room/playUrl") {
       return Response.json({

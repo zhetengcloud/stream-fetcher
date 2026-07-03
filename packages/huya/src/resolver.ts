@@ -121,7 +121,12 @@ export class HuyaResolver implements Resolver<HuyaResolverOptions> {
 
     const streamUrls = this.#buildStreamUrls(profile.streamInfo, protocol);
     const selectedUrl = this.#selectStreamUrl(streamUrls, preferredCdn);
-    return this.#applyRatio(selectedUrl, profile.bitrateInfo, profile.maxBitrate, maxRatio);
+    return this.#applyRatio(
+      selectedUrl,
+      profile.bitrateInfo,
+      profile.maxBitrate,
+      maxRatio,
+    );
   }
 
   async #getRoomPage(
@@ -145,7 +150,11 @@ export class HuyaResolver implements Resolver<HuyaResolverOptions> {
   }
 
   #extractRoomProfile(page: string): RoomProfile | null {
-    const roomData = this.#extractJsonAfter(page, /var\s+TT_ROOM_DATA\s*=\s*/, ";");
+    const roomData = this.#extractJsonAfter(
+      page,
+      /var\s+TT_ROOM_DATA\s*=\s*/,
+      ";",
+    );
     const roomState = typeof roomData.state === "string" ? roomData.state : "";
 
     const stream = this.#extractStreamJson(page);
@@ -182,7 +191,9 @@ export class HuyaResolver implements Resolver<HuyaResolverOptions> {
       cover: typeof gameLiveInfo.screenshot === "string"
         ? gameLiveInfo.screenshot.replace(/^http:/, "https:")
         : "",
-      maxBitrate: typeof gameLiveInfo.bitRate === "number" ? gameLiveInfo.bitRate : 0,
+      maxBitrate: typeof gameLiveInfo.bitRate === "number"
+        ? gameLiveInfo.bitRate
+        : 0,
       bitrateInfo: bitrateInfo as BitrateInfo[],
       streamInfo: streamInfo as StreamInfo[],
     };
@@ -256,7 +267,9 @@ export class HuyaResolver implements Resolver<HuyaResolverOptions> {
     }
 
     const ratios = bitrateInfo
-      .map((info) => typeof info.iBitRate === "number" ? info.iBitRate : maxBitrate)
+      .map((info) =>
+        typeof info.iBitRate === "number" ? info.iBitRate : maxBitrate
+      )
       .filter((bitrate) => bitrate > 0 && bitrate <= maxRatio);
 
     const selectedRatio = ratios.length > 0 ? Math.max(...ratios) : 0;
@@ -317,7 +330,8 @@ export class HuyaResolver implements Resolver<HuyaResolverOptions> {
 
   #rotl64(value: bigint): bigint {
     const low = value & BigInt(0xFFFFFFFF);
-    const rotated = ((low << BigInt(8)) | (low >> BigInt(24))) & BigInt(0xFFFFFFFF);
+    const rotated = ((low << BigInt(8)) | (low >> BigInt(24))) &
+      BigInt(0xFFFFFFFF);
     return rotated | (value & ~BigInt(0xFFFFFFFF));
   }
 
@@ -338,7 +352,11 @@ export class HuyaResolver implements Resolver<HuyaResolverOptions> {
     return result;
   }
 
-  #extractJsonAfter(page: string, pattern: RegExp, end: string): Record<string, unknown> {
+  #extractJsonAfter(
+    page: string,
+    pattern: RegExp,
+    end: string,
+  ): Record<string, unknown> {
     const match = pattern.exec(page);
     if (!match) {
       throw new Error(messages.errors.roomDataNotFound);
