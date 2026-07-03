@@ -92,7 +92,7 @@ interface StreamDetector {
 
 A `Resolver<T>` converts a user-facing platform URL into a `Source`.
 
-Implementation order: Bilibili ✅ → Huya. YouTube / Twitch on hold.
+Implementation order: Bilibili ✅ → Huya ✅. YouTube / Twitch on hold.
 
 The library is designed for microservices / Kubernetes, not an end-user CLI.
 
@@ -111,7 +111,7 @@ The library is designed for microservices / Kubernetes, not an end-user CLI.
 |---|-------------|--------|
 | M1 | Core: interfaces, `HttpSource`, `FileSink`, `Recorder` | ✅ Done |
 | M2 | `S3Sink`, multi-sink tee, abort | ✅ Done |
-| M3 | Workspace migration + Bilibili + Huya resolvers | 🚧 Bilibili done, Huya next |
-| M4 | README + examples | Pending |
+| M3 | Workspace migration + Bilibili + Huya resolvers | ✅ Done |
+| M4 | README + examples | 🚧 Next |
 
 **On hold:** YouTube / Twitch resolvers.
