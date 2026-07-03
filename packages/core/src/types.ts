@@ -44,10 +44,10 @@ export interface RecorderOptions<S, K> {
 }
 
 /** Converts a platform URL (e.g. Bilibili room) into a Source. */
-export interface Resolver {
+export interface Resolver<T = unknown> {
   readonly platform: string;
   canHandle(url: string): boolean;
-  resolve(url: string, options?: unknown): Promise<Source>;
+  resolve(url: string, options?: T): Promise<Source>;
 }
 
 /** Options for StreamDetector polling. */

@@ -1,2 +1,2 @@
-// Placeholder for @stream-fetcher/bilibili resolver implementation.
-export {};
+export { BilibiliProtocol, BilibiliResolver } from "./src/resolver.ts";
+export type { BilibiliResolverOptions } from "./src/resolver.ts";
