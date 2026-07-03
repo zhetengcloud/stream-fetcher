@@ -110,6 +110,8 @@ class S3MultipartClient {
       method: "POST",
       url: uploadUrl,
       headers: {
+        // CreateMultipartUpload has an empty body. This is the SHA-256 hash of "",
+        // required by AWS Signature Version 4's x-amz-content-sha256 header.
         "x-amz-content-sha256":
           "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       },
