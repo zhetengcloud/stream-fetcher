@@ -1,7 +1,12 @@
 {
-  "tasks": {
-    "dev": "deno run main.ts"
-  },
+  "name": "@stream-fetcher/root",
+  "version": "0.1.0",
+  "exports": {},
+  "workspace": [
+    "packages/core",
+    "packages/bilibili",
+    "packages/huya"
+  ],
   "imports": {
     "@std/assert": "jsr:@std/assert@1"
   }
