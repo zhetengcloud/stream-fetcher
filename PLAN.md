@@ -11,7 +11,8 @@ References:
 ## Goal
 
 - Fetch an HTTP(S) live stream (HLS, progressive HTTP, chunked transfer).
-- Pipe raw bytes to one or more outputs.
+- Pipe raw bytes to a single output (file, S3/OSS, stdout, or a message bus
+  sink).
 - Graceful abort and basic progress metrics.
 - Pluggable platform resolvers for Twitch / YouTube / Bilibili / Huya / Douyu.
 
@@ -33,8 +34,8 @@ interface Sink<T = unknown> {
 interface RecorderOptions<S, K> {
   source: Source<S>;
   sourceOptions?: S;
-  sinks: Array<Sink<K>>;
-  sinkOptions?: K[];
+  sink: Sink<K>;
+  sinkOptions?: K;
   signal?: AbortSignal;
   onError?: (error: unknown, ctx: { source?: string; sink?: string }) => void;
   /** Throughput/health metrics, not completion percentage. */
@@ -107,7 +108,7 @@ The library is designed for microservices / Kubernetes, not an end-user CLI.
 | M  | Deliverable                                            | Status  |
 | -- | ------------------------------------------------------ | ------- |
 | M1 | Core: interfaces, `HttpSource`, `FileSink`, `Recorder` | ✅ Done |
-| M2 | `S3Sink`, multi-sink tee, abort                        | ✅ Done |
+| M2 | `S3Sink`, graceful abort, and single-sink `Recorder`   | ✅ Done |
 | M3 | Workspace migration + Bilibili + Huya resolvers        | ✅ Done |
 | M4 | README + examples                                      | 🚧 Next |
 

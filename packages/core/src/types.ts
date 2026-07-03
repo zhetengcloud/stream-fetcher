@@ -28,8 +28,8 @@ export interface Sink<T = unknown> {
 export interface RecorderOptions<S, K> {
   source: Source<S>;
   sourceOptions?: S;
-  sinks: Array<Sink<K>>;
-  sinkOptions?: K[];
+  sink: Sink<K>;
+  sinkOptions?: K;
   signal?: AbortSignal;
   /** Progress emit interval in milliseconds. Defaults to 1000. */
   progressIntervalMs?: number;
