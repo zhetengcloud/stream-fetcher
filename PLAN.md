@@ -43,6 +43,12 @@ interface RecorderOptions<S, K> {
     chunkCount: number;
   }) => void;
 }
+
+interface Resolver<T = unknown> {
+  readonly platform: string;
+  canHandle(url: string): boolean;
+  resolve(url: string, options?: T): Promise<Source>;
+}
 ```
 
 ## Layout
@@ -53,14 +59,12 @@ packages/
     src/
       types.ts
       recorder.ts
-      stream-detector.ts
       sources/http.ts
       sinks/file.ts
       sinks/stdout.ts
       sinks/s3.ts
-      adapters/         # runtime-specific fs adapters
-        deno.ts
-        node.ts
+      utils/s3_sign.ts
+      adapters/deno.ts
   bilibili/           # @stream-fetcher/bilibili
   huya/               # @stream-fetcher/huya
   twitch/             # @stream-fetcher/twitch (on hold)
@@ -70,7 +74,7 @@ packages/
 
 ## Stream Start Detection
 
-Cross-cutting helper in core that polls a source until it produces a stream.
+Planned cross-cutting helper in core that polls a source until it produces a stream.
 
 ```ts
 interface DetectorOptions {
@@ -84,21 +88,11 @@ interface StreamDetector {
 }
 ```
 
-Platform-specific live checks can be provided by resolvers; the detector uses them generically.
-
 ## Platform Support
 
-A `Resolver` converts a user-facing platform URL into a `Source`:
+A `Resolver<T>` converts a user-facing platform URL into a `Source`.
 
-```ts
-interface Resolver {
-  readonly platform: string;
-  canHandle(url: string): boolean;
-  resolve(url: string, options?: unknown): Promise<Source>;
-}
-```
-
-Implementation order: Bilibili → Huya. YouTube / Twitch on hold.
+Implementation order: Bilibili ✅ → Huya. YouTube / Twitch on hold.
 
 The library is designed for microservices / Kubernetes, not an end-user CLI.
 
@@ -113,11 +107,11 @@ The library is designed for microservices / Kubernetes, not an end-user CLI.
 
 ## Milestones
 
-| M | Deliverable |
-|---|-------------|
-| M1 | Core: interfaces, `HttpSource`, `FileSink`, `Recorder` |
-| M2 | `S3Sink`, multi-sink tee, abort |
-| M3 | Workspace migration + Bilibili + Huya resolvers |
-| M4 | README + examples |
+| M | Deliverable | Status |
+|---|-------------|--------|
+| M1 | Core: interfaces, `HttpSource`, `FileSink`, `Recorder` | ✅ Done |
+| M2 | `S3Sink`, multi-sink tee, abort | ✅ Done |
+| M3 | Workspace migration + Bilibili + Huya resolvers | 🚧 Bilibili done, Huya next |
+| M4 | README + examples | Pending |
 
 **On hold:** YouTube / Twitch resolvers.
