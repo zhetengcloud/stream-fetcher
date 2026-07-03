@@ -33,18 +33,28 @@ export class HlsSource implements Source<HlsSourceOptions> {
     const refreshIntervalMs = options.refreshIntervalMs ?? 2000;
     const maxRefreshCount = options.maxRefreshCount ?? Infinity;
     const signal = this.#combineSignals(options.signal);
+    const baseUrl = new URL(options.playlistUrl);
+    const fetchedSegments = new Set<string>();
+
+    const generator = this.#fetchSegmentBytes({
+      baseUrl,
+      headers: options.headers,
+      refreshIntervalMs,
+      maxRefreshCount,
+      signal,
+      fetchedSegments,
+    });
 
     return Promise.resolve(
       new ReadableStream<Uint8Array>({
-        start: (controller) =>
-          this.#run(
-            controller,
-            options.playlistUrl,
-            options.headers,
-            refreshIntervalMs,
-            maxRefreshCount,
-            signal,
-          ),
+        pull: async (controller) => {
+          const result = await generator.next();
+          if (result.done) {
+            controller.close();
+          } else {
+            controller.enqueue(result.value);
+          }
+        },
       }),
     );
   }
@@ -64,54 +74,35 @@ export class HlsSource implements Source<HlsSourceOptions> {
     return this.#abortController.signal;
   }
 
-  async #run(
-    controller: ReadableStreamDefaultController<Uint8Array>,
-    playlistUrl: string | URL,
-    headers: Record<string, string> | undefined,
-    refreshIntervalMs: number,
-    maxRefreshCount: number,
-    signal: AbortSignal,
-  ): Promise<void> {
-    const baseUrl = new URL(playlistUrl);
-    const fetchedSegments = new Set<string>();
-    let ended = false;
-    let refreshCount = 0;
+  async *#fetchSegmentBytes(
+    ctx: FetchSegmentBytesContext,
+  ): AsyncGenerator<Uint8Array> {
+    for (
+      let refreshCount = 0;
+      refreshCount <= ctx.maxRefreshCount && !ctx.signal.aborted;
+      refreshCount++
+    ) {
+      const playlist = await this.#fetchPlaylist(
+        ctx.baseUrl,
+        ctx.headers,
+        ctx.signal,
+      );
 
-    try {
-      while (!signal.aborted && !ended && refreshCount <= maxRefreshCount) {
-        const playlist = await this.#fetchPlaylist(baseUrl, headers, signal);
-        const segments = this.#parseSegments(playlist, baseUrl);
+      for (const segmentUrl of this.#parseSegments(playlist, ctx.baseUrl)) {
+        if (ctx.signal.aborted) return;
+        if (ctx.fetchedSegments.has(segmentUrl)) continue;
+        ctx.fetchedSegments.add(segmentUrl);
 
-        if (segments.length === 0 && playlist.isEndlist) {
-          // Empty VOD playlist — nothing to emit.
-          break;
-        }
-
-        for (const segmentUrl of segments) {
-          if (signal.aborted) break;
-          if (fetchedSegments.has(segmentUrl)) continue;
-          fetchedSegments.add(segmentUrl);
-
-          const bytes = await this.#fetchSegment(segmentUrl, headers, signal);
-          controller.enqueue(bytes);
-        }
-
-        if (playlist.isEndlist) {
-          ended = true;
-          break;
-        }
-
-        refreshCount++;
-        if (refreshCount > maxRefreshCount) {
-          break;
-        }
-
-        await this.#delay(refreshIntervalMs, signal);
+        yield await this.#fetchSegment(segmentUrl, ctx.headers, ctx.signal);
       }
 
-      controller.close();
-    } catch (error) {
-      controller.error(error);
+      if (playlist.isEndlist || ctx.signal.aborted) {
+        return;
+      }
+
+      if (refreshCount < ctx.maxRefreshCount) {
+        await this.#delay(ctx.refreshIntervalMs, ctx.signal);
+      }
     }
   }
 
@@ -184,6 +175,15 @@ export class HlsSource implements Source<HlsSourceOptions> {
       });
     });
   }
+}
+
+interface FetchSegmentBytesContext {
+  baseUrl: URL;
+  headers: Record<string, string> | undefined;
+  refreshIntervalMs: number;
+  maxRefreshCount: number;
+  signal: AbortSignal;
+  fetchedSegments: Set<string>;
 }
 
 interface ParsedPlaylist {
