@@ -317,8 +317,7 @@ It uses the resolver registry to pick a source, then the core `Recorder` to pipe
 |-----------|-------------|
 | M1 | Core `@stream-fetcher/core`: interfaces, `HttpSource`, `FileSink`, `Recorder` |
 | M2 | `S3Sink` + multi-sink tee + abort |
-| M3 | Workspace migration + `@stream-fetcher/bilibili` resolver |
+| **M3** | Workspace migration + `@stream-fetcher/bilibili` resolver + `@stream-fetcher/huya` resolver |
 | M4 | `@stream-fetcher/twitch` resolver |
-| M5 | `@stream-fetcher/huya` resolver |
-| M6 | Experimental `@stream-fetcher/youtube` / `@stream-fetcher/douyu` |
-| M7 | CLI + README examples |
+| M5 | Experimental `@stream-fetcher/youtube` / `@stream-fetcher/douyu` |
+| M6 | CLI + README examples |
