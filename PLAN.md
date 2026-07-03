@@ -99,6 +99,14 @@ Implementation order: Bilibili → Huya. YouTube / Twitch on hold.
 
 The library is designed for microservices / Kubernetes, not an end-user CLI.
 
+## Code Quality
+
+- **SOLID principles**: small, single-responsibility interfaces; platform details isolated from core; users depend on abstractions (`Source`, `Sink`, `Resolver`), not concrete implementations.
+- **Web Streams as public API**: `Source` returns `ReadableStream`, `Sink` accepts `WritableStream`. Portable and runtime-agnostic.
+- **RxJS internally**: used where it helps — polling, retry/backoff, fan-out — but hidden behind the public interfaces. Users are not required to depend on RxJS.
+- **No external runtime deps in core** unless strictly necessary.
+- **Tests** cover each package independently; a broken platform resolver must not block core CI.
+
 ## Milestones
 
 | M | Deliverable |
