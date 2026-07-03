@@ -5,6 +5,7 @@
     ".": "./mod.ts",
     "./types": "./src/types.ts",
     "./sources/http": "./src/sources/http.ts",
+    "./sources/hls": "./src/sources/hls.ts",
     "./sinks/file": "./src/sinks/file.ts",
     "./sinks/stdout": "./src/sinks/stdout.ts",
     "./sinks/s3": "./src/sinks/s3.ts",

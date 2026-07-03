@@ -1,4 +1,5 @@
 import type { Resolver, Source } from "@stream-fetcher/core/types";
+import { HlsSource } from "@stream-fetcher/core/sources/hls";
 import { HttpSource } from "@stream-fetcher/core/sources/http";
 import { messages } from "./messages.ts";
 
@@ -65,17 +66,24 @@ export class BilibiliResolver implements Resolver<BilibiliResolverOptions> {
       _apiBase,
     );
 
+    const isHls = protocol === BilibiliProtocol.Hls;
+
     return {
       name: "bilibili",
-      open: () =>
-        new HttpSource().open({
-          url: streamUrl,
-          headers: {
-            "user-agent": BILIBILI_USER_AGENT,
-            referer: BILIBILI_REFERER,
-            ...(cookie ? { cookie } : {}),
-          },
-        }),
+      open: () => {
+        const headers = {
+          "user-agent": BILIBILI_USER_AGENT,
+          referer: BILIBILI_REFERER,
+          ...(cookie ? { cookie } : {}),
+        };
+        if (isHls) {
+          return new HlsSource().open({
+            playlistUrl: streamUrl,
+            headers,
+          });
+        }
+        return new HttpSource().open({ url: streamUrl, headers });
+      },
     };
   }
 

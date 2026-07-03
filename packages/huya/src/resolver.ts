@@ -1,4 +1,5 @@
 import type { Resolver, Source } from "@stream-fetcher/core/types";
+import { HlsSource } from "@stream-fetcher/core/sources/hls";
 import { HttpSource } from "@stream-fetcher/core/sources/http";
 import md5 from "md5";
 import { messages } from "./messages.ts";
@@ -80,16 +81,23 @@ export class HuyaResolver implements Resolver<HuyaResolverOptions> {
       _webBase,
     );
 
+    const isHls = protocol === HuyaProtocol.Hls;
+
     return {
       name: "huya",
-      open: () =>
-        new HttpSource().open({
-          url: streamUrl,
-          headers: {
-            "user-agent": HUYA_USER_AGENT,
-            referer: url,
-          },
-        }),
+      open: () => {
+        const headers = {
+          "user-agent": HUYA_USER_AGENT,
+          referer: url,
+        };
+        if (isHls) {
+          return new HlsSource().open({
+            playlistUrl: streamUrl,
+            headers,
+          });
+        }
+        return new HttpSource().open({ url: streamUrl, headers });
+      },
     };
   }
 
