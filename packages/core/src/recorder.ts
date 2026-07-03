@@ -7,18 +7,17 @@ function ignore(promise: Promise<unknown>): Promise<void> {
 }
 
 /**
- * Recorder coordinates one Source -> N Sinks.
+ * Recorder coordinates one Source -> one Sink.
  *
- * It opens the source stream, fans out chunks to every sink, reports progress,
- * and ensures all sinks are closed when recording stops or errors.
+ * It opens the source stream, pumps bytes into the sink, reports progress,
+ * and ensures the sink is closed when recording stops or errors.
  */
 export class Recorder<S = unknown, K = unknown> {
   #options: RecorderOptions<S, K>;
   #status: RecorderStatus = RecorderStatus.Idle;
   #abortController = new AbortController();
   #sourceStream: ReadableStream<Uint8Array> | null = null;
-  #sinkStreams: ReadableStream<Uint8Array>[] = [];
-  #sinkWriters: WritableStreamDefaultWriter<Uint8Array>[] = [];
+  #sinkWriter: WritableStreamDefaultWriter<Uint8Array> | null = null;
   #startTime = 0;
   #bytes = 0;
   #chunkCount = 0;
@@ -48,15 +47,10 @@ export class Recorder<S = unknown, K = unknown> {
         this.#options.sourceOptions,
       );
 
-      this.#sinkWriters = [];
-      this.#sinkStreams = [];
-
-      for (let i = 0; i < this.#options.sinks.length; i++) {
-        const sink = this.#options.sinks[i];
-        const sinkOptions = this.#options.sinkOptions?.[i];
-        const writable = await sink.open(sinkOptions);
-        this.#sinkWriters.push(writable.getWriter());
-      }
+      const writable = await this.#options.sink.open(
+        this.#options.sinkOptions,
+      );
+      this.#sinkWriter = writable.getWriter();
 
       this.#startProgress();
       await this.#pumpSource();
@@ -69,7 +63,7 @@ export class Recorder<S = unknown, K = unknown> {
     }
   }
 
-  /** Stop recording and close all sinks. Safe to call multiple times. */
+  /** Stop recording and close the sink. Safe to call multiple times. */
   async stop(): Promise<void> {
     if (
       this.#status === RecorderStatus.Stopped ||
@@ -79,22 +73,17 @@ export class Recorder<S = unknown, K = unknown> {
     this.#abortController.abort();
     this.#stopProgress();
 
-    for (const stream of this.#sinkStreams) {
-      ignore(stream.cancel());
+    if (this.#sinkWriter) {
+      await ignore(this.#sinkWriter.close());
+      this.#sinkWriter = null;
     }
-
-    await Promise.all(
-      this.#sinkWriters.map((writer) => ignore(writer.close())),
-    );
     await ignore(this.#options.source.close?.() ?? Promise.resolve());
   }
 
-  /** Read from the source and write each chunk into every sink. */
+  /** Read from the source and write each chunk into the sink. */
   async #pumpSource(): Promise<void> {
-    if (!this.#sourceStream) return;
+    if (!this.#sourceStream || !this.#sinkWriter) return;
 
-    // Fan out to each sink writer. If only one sink, no tee needed.
-    const writers = this.#sinkWriters;
     const reader = this.#sourceStream.getReader();
 
     while (this.#status === RecorderStatus.Running) {
@@ -105,13 +94,11 @@ export class Recorder<S = unknown, K = unknown> {
       this.#bytes += chunk.length;
       this.#chunkCount += 1;
 
-      await Promise.all(
-        writers.map((writer) =>
-          writer.write(chunk).catch(() => {
-            this.stop();
-          })
-        ),
-      );
+      try {
+        await this.#sinkWriter.write(chunk);
+      } catch {
+        this.stop();
+      }
     }
 
     reader.releaseLock();

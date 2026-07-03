@@ -68,8 +68,8 @@ Deno.test("Recorder copies source bytes to a single file sink", async () => {
 
   const recorder = new Recorder({
     source: arraySource(chunks),
-    sinks: [new FileSink()],
-    sinkOptions: [{ path: "/tmp/test.bin", fs }],
+    sink: new FileSink(),
+    sinkOptions: { path: "/tmp/test.bin", fs },
   });
 
   await recorder.start();
@@ -79,26 +79,6 @@ Deno.test("Recorder copies source bytes to a single file sink", async () => {
     new TextDecoder().decode(files.get("/tmp/test.bin")),
     "hello world",
   );
-});
-
-Deno.test("Recorder fans out to multiple file sinks", async () => {
-  const { fs: fs1, files: files1 } = createInMemoryFs();
-  const { fs: fs2, files: files2 } = createInMemoryFs();
-  const chunks = [new TextEncoder().encode("a"), new TextEncoder().encode("b")];
-
-  const recorder = new Recorder({
-    source: arraySource(chunks),
-    sinks: [new FileSink(), new FileSink()],
-    sinkOptions: [
-      { path: "/tmp/one.bin", fs: fs1 },
-      { path: "/tmp/two.bin", fs: fs2 },
-    ],
-  });
-
-  await recorder.start();
-
-  assertEquals(new TextDecoder().decode(files1.get("/tmp/one.bin")), "ab");
-  assertEquals(new TextDecoder().decode(files2.get("/tmp/two.bin")), "ab");
 });
 
 Deno.test("Recorder reports progress", async () => {
@@ -133,8 +113,8 @@ Deno.test("Recorder reports progress", async () => {
 
   const recorder = new Recorder({
     source,
-    sinks: [new FileSink()],
-    sinkOptions: [{ path: "/tmp/progress.bin", fs }],
+    sink: new FileSink(),
+    sinkOptions: { path: "/tmp/progress.bin", fs },
     progressIntervalMs: 50,
     onProgress(metrics) {
       progressEvents.push(metrics);
@@ -177,8 +157,8 @@ Deno.test("Recorder stops early when aborted", async () => {
 
   const recorder = new Recorder({
     source,
-    sinks: [new FileSink()],
-    sinkOptions: [{ path: "/tmp/aborted.bin", fs }],
+    sink: new FileSink(),
+    sinkOptions: { path: "/tmp/aborted.bin", fs },
     signal: controller.signal,
   });
 
