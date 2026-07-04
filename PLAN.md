@@ -21,14 +21,14 @@ References:
 ```ts
 interface Source<T = unknown> {
   readonly name: string;
-  open(options?: T): Promise<ReadableStream<Uint8Array>>;
-  close?(): Promise<void>;
+  open(options?: T): Observable<Uint8Array>;
+  close?(): Observable<void>;
 }
 
 interface Sink<T = unknown> {
   readonly name: string;
-  open(options?: T): Promise<WritableStream<Uint8Array>>;
-  close?(): Promise<void>;
+  write(source$: Observable<Uint8Array>, options?: T): Observable<void>;
+  close?(): Observable<void>;
 }
 
 interface RecorderOptions<S, K> {
@@ -37,20 +37,27 @@ interface RecorderOptions<S, K> {
   sink: Sink<K>;
   sinkOptions?: K;
   signal?: AbortSignal;
+  /** Progress emit interval in milliseconds. Defaults to 1000. */
+  progressIntervalMs?: number;
+  /** Called with the error before it propagates down the Observable. */
   onError?: (error: unknown, ctx: { source?: string; sink?: string }) => void;
-  /** Throughput/health metrics, not completion percentage. */
-  onProgress?: (metrics: {
-    bytes: number;
-    elapsedMs: number;
-    bitrateKbps: number;
-    chunkCount: number;
-  }) => void;
+}
+
+function record<S, K>(
+  options: RecorderOptions<S, K>,
+): Observable<ProgressMetrics>;
+
+interface ProgressMetrics {
+  bytes: number;
+  elapsedMs: number;
+  bitrateKbps: number;
+  chunkCount: number;
 }
 
 interface Resolver<T = unknown> {
   readonly platform: string;
   canHandle(url: string): boolean;
-  resolve(url: string, options?: T): Promise<Source>;
+  resolve(url: string, options?: T): Observable<Source>;
 }
 ```
 
@@ -91,7 +98,7 @@ interface StreamDetector {
   waitForLive(
     source: Source,
     options: DetectorOptions,
-  ): Promise<ReadableStream<Uint8Array>>;
+  ): Observable<Uint8Array>;
 }
 ```
 
@@ -107,8 +114,8 @@ The library is designed for microservices / Kubernetes, not an end-user CLI.
 
 | M  | Deliverable                                            | Status  |
 | -- | ------------------------------------------------------ | ------- |
-| M1 | Core: interfaces, `HttpSource`, `FileSink`, `Recorder` | ✅ Done |
-| M2 | `S3Sink`, graceful abort, and single-sink `Recorder`   | ✅ Done |
+| M1 | Core: interfaces, `HttpSource`, `FileSink`, `record()` | ✅ Done |
+| M2 | `S3Sink`, graceful abort, and single-sink `record()`   | ✅ Done |
 | M3 | Workspace migration + Bilibili + Huya resolvers        | ✅ Done |
 | M4 | README + examples                                      | 🚧 Next |
 

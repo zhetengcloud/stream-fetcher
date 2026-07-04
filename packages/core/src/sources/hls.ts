@@ -1,15 +1,16 @@
 import type { Source } from "@stream-fetcher/core/types";
 import {
   concatMap,
+  defer,
   from,
   interval,
   type Observable,
+  of,
   scan,
   startWith,
   take,
   takeWhile,
 } from "rxjs";
-import { readableStreamFromObservable } from "../utils/observable_to_stream.ts";
 
 /** Options for the HLS source. */
 export interface HlsSourceOptions {
@@ -30,7 +31,7 @@ export interface HlsSourceOptions {
 
 /**
  * Fetches an HLS playlist and emits the concatenated bytes of its segments as a
- * single stream.
+ * single Observable.
  *
  * Supports VOD and live (sliding-window) playlists. For live playlists, the
  * source refreshes the playlist at `refreshIntervalMs` and fetches new segments
@@ -40,26 +41,24 @@ export class HlsSource implements Source<HlsSourceOptions> {
   readonly name = "hls";
   #abortController = new AbortController();
 
-  open(options: HlsSourceOptions): Promise<ReadableStream<Uint8Array>> {
+  open(options: HlsSourceOptions): Observable<Uint8Array> {
     const refreshIntervalMs = options.refreshIntervalMs ?? 2000;
     const maxRefreshCount = options.maxRefreshCount ?? Infinity;
     const signal = this.#combineSignals(options.signal);
     const baseUrl = new URL(options.playlistUrl);
 
-    const bytes$ = this.#createBytesObservable({
+    return this.#createBytesObservable({
       baseUrl,
       headers: options.headers,
       refreshIntervalMs,
       maxRefreshCount,
       signal,
     });
-
-    return Promise.resolve(readableStreamFromObservable(bytes$));
   }
 
-  close(): Promise<void> {
+  close(): Observable<void> {
     this.#abortController.abort();
-    return Promise.resolve();
+    return of(undefined);
   }
 
   #combineSignals(external?: AbortSignal): AbortSignal {
@@ -104,17 +103,19 @@ export class HlsSource implements Source<HlsSourceOptions> {
     );
   }
 
-  async #fetchPlaylist(
+  #fetchPlaylist(
     url: URL,
     headers: Record<string, string> | undefined,
     signal: AbortSignal,
-  ): Promise<ParsedPlaylist> {
-    const response = await fetch(url, { headers, signal });
-    if (!response.ok) {
-      throw new Error(`HLS playlist request failed: ${response.status}`);
-    }
-    const text = await response.text();
-    return this.#parsePlaylist(text);
+  ): Observable<ParsedPlaylist> {
+    return defer(async () => {
+      const response = await fetch(url, { headers, signal });
+      if (!response.ok) {
+        throw new Error(`HLS playlist request failed: ${response.status}`);
+      }
+      const text = await response.text();
+      return this.#parsePlaylist(text);
+    });
   }
 
   #parsePlaylist(text: string): ParsedPlaylist {
@@ -148,16 +149,18 @@ export class HlsSource implements Source<HlsSourceOptions> {
     }
   }
 
-  async #fetchSegment(
+  #fetchSegment(
     url: string,
     headers: Record<string, string> | undefined,
     signal: AbortSignal,
-  ): Promise<Uint8Array> {
-    const response = await fetch(url, { headers, signal });
-    if (!response.ok) {
-      throw new Error(`HLS segment request failed: ${response.status}`);
-    }
-    return new Uint8Array(await response.arrayBuffer());
+  ): Observable<Uint8Array> {
+    return defer(async () => {
+      const response = await fetch(url, { headers, signal });
+      if (!response.ok) {
+        throw new Error(`HLS segment request failed: ${response.status}`);
+      }
+      return new Uint8Array(await response.arrayBuffer());
+    });
   }
 }
 

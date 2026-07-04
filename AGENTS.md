@@ -8,12 +8,11 @@ conventions change.
 - **SOLID principles**: small, single-responsibility interfaces; platform
   details isolated from core; users depend on abstractions (`Source`, `Sink`,
   `Resolver`), not concrete implementations.
-- **Web Streams as public API**: `Source` returns `ReadableStream`, `Sink`
-  accepts `WritableStream`. Portable and runtime-agnostic.
 - **RxJS as the standard reactive interface**: use RxJS `Observable` for all
   async/reactive flows, including public APIs and internal implementations.
-  Convert to Web Streams at the boundary when a portable byte-stream interface
-  is required.
+  `Source` emits `Observable<Uint8Array>`; `Sink` and `FileSystem` accept
+  `Observable<Uint8Array>` and return `Observable<void>`. Convert to Web Streams
+  only at runtime boundaries when required.
 - **Runtime-agnostic core**: no Deno-specific APIs in core. Runtime adapters
   provide file-system access.
 - **Minimal external runtime deps in core**: only widely-adopted, portable

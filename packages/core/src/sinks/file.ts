@@ -1,4 +1,5 @@
 import type { FileSystem, Sink } from "@stream-fetcher/core/types";
+import type { Observable } from "rxjs";
 
 /** Options for the file sink. */
 export interface FileSinkOptions {
@@ -6,11 +7,14 @@ export interface FileSinkOptions {
   fs: FileSystem;
 }
 
-/** Writes the stream to a file using the supplied FileSystem adapter. */
+/** Writes the Observable's chunks to a file using the supplied FileSystem adapter. */
 export class FileSink implements Sink<FileSinkOptions> {
   readonly name = "file";
 
-  async open(options: FileSinkOptions): Promise<WritableStream<Uint8Array>> {
-    return await options.fs.open(options.path);
+  write(
+    source$: Observable<Uint8Array>,
+    options: FileSinkOptions,
+  ): Observable<void> {
+    return options.fs.write(options.path, source$);
   }
 }

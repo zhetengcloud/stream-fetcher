@@ -2,6 +2,7 @@ import type { Resolver, Source } from "@stream-fetcher/core/types";
 import { HlsSource } from "@stream-fetcher/core/sources/hls";
 import { HttpSource } from "@stream-fetcher/core/sources/http";
 import md5 from "md5";
+import { defer, type Observable, of, switchMap } from "rxjs";
 import { messages } from "./messages.ts";
 
 const HUYA_WEB_BASE_URL = "https://www.huya.com";
@@ -57,10 +58,10 @@ export class HuyaResolver implements Resolver<HuyaResolverOptions> {
     return this.#roomPattern.test(url);
   }
 
-  async resolve(
+  resolve(
     url: string,
     options: HuyaResolverOptions = {},
-  ): Promise<Source> {
+  ): Observable<Source> {
     const match = this.#roomPattern.exec(url);
     if (!match) throw new Error(messages.errors.invalidUrl(url));
     const roomId = match[1];
@@ -72,69 +73,74 @@ export class HuyaResolver implements Resolver<HuyaResolverOptions> {
       _webBase,
     } = options;
 
-    const streamUrl = await this.#fetchStreamUrl(
+    const isHls = protocol === HuyaProtocol.Hls;
+    const headers = {
+      "user-agent": HUYA_USER_AGENT,
+      referer: url,
+    };
+
+    return this.#fetchStreamUrl(
       url,
       roomId,
       protocol,
       cdn?.toUpperCase(),
       maxRatio,
       _webBase,
-    );
-
-    const isHls = protocol === HuyaProtocol.Hls;
-
-    return {
-      name: "huya",
-      open: () => {
-        const headers = {
-          "user-agent": HUYA_USER_AGENT,
-          referer: url,
+    ).pipe(
+      switchMap((streamUrl) => {
+        const source: Source = {
+          name: "huya",
+          open: () => {
+            if (isHls) {
+              return new HlsSource().open({
+                playlistUrl: streamUrl,
+                headers,
+              });
+            }
+            return new HttpSource().open({ url: streamUrl, headers });
+          },
         };
-        if (isHls) {
-          return new HlsSource().open({
-            playlistUrl: streamUrl,
-            headers,
-          });
-        }
-        return new HttpSource().open({ url: streamUrl, headers });
-      },
-    };
+        return of(source);
+      }),
+    );
   }
 
-  async #fetchStreamUrl(
+  #fetchStreamUrl(
     referer: string,
     roomId: string,
     protocol: HuyaProtocol,
     preferredCdn: string | undefined,
     maxRatio: number,
     webBase: string | undefined,
-  ): Promise<string> {
-    const page = await this.#getRoomPage(referer, roomId, webBase);
+  ): Observable<string> {
+    return defer(async () => {
+      const page = await this.#getRoomPage(referer, roomId, webBase);
 
-    if (
-      page.includes(messages.pageMarkers.roomNotFound) ||
-      page.includes(messages.pageMarkers.roomBanned)
-    ) {
-      throw new Error(messages.errors.roomUnavailable);
-    }
+      if (
+        page.includes(messages.pageMarkers.roomNotFound) ||
+        page.includes(messages.pageMarkers.roomBanned)
+      ) {
+        throw new Error(messages.errors.roomUnavailable);
+      }
 
-    const profile = this.#extractRoomProfile(page);
-    if (!profile) {
-      throw new Error(messages.errors.offlineOrMissingData);
-    }
+      const profile = this.#extractRoomProfile(page);
+      if (!profile) {
+        throw new Error(messages.errors.offlineOrMissingData);
+      }
 
-    if (this.#isReplay(profile.title)) {
-      throw new Error(messages.errors.replay);
-    }
+      if (this.#isReplay(profile.title)) {
+        throw new Error(messages.errors.replay);
+      }
 
-    const streamUrls = this.#buildStreamUrls(profile.streamInfo, protocol);
-    const selectedUrl = this.#selectStreamUrl(streamUrls, preferredCdn);
-    return this.#applyRatio(
-      selectedUrl,
-      profile.bitrateInfo,
-      profile.maxBitrate,
-      maxRatio,
-    );
+      const streamUrls = this.#buildStreamUrls(profile.streamInfo, protocol);
+      const selectedUrl = this.#selectStreamUrl(streamUrls, preferredCdn);
+      return this.#applyRatio(
+        selectedUrl,
+        profile.bitrateInfo,
+        profile.maxBitrate,
+        maxRatio,
+      );
+    });
   }
 
   async #getRoomPage(

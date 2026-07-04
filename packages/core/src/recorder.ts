@@ -1,129 +1,97 @@
 import type { RecorderOptions } from "@stream-fetcher/core/types";
-import { RecorderStatus } from "@stream-fetcher/core/types";
+import {
+  defer,
+  EMPTY,
+  finalize,
+  ignoreElements,
+  interval,
+  map,
+  merge,
+  Observable,
+  startWith,
+  Subject,
+  takeUntil,
+  tap,
+} from "rxjs";
 
-/** Await a promise and ignore any error. Useful for cleanup. */
-function ignore(promise: Promise<unknown>): Promise<void> {
-  return promise.then(() => {}, () => {});
+/** Convert an AbortSignal into a one-shot Observable. */
+function abortSignal$(signal?: AbortSignal): Observable<void> {
+  if (!signal) return EMPTY;
+  return new Observable<void>((subscriber) => {
+    if (signal.aborted) {
+      subscriber.next();
+      subscriber.complete();
+      return;
+    }
+    const handler = () => {
+      subscriber.next();
+      subscriber.complete();
+    };
+    signal.addEventListener("abort", handler, { once: true });
+    return () => signal.removeEventListener("abort", handler);
+  });
+}
+
+/** Throughput/health metrics emitted by {@link record}. */
+export interface ProgressMetrics {
+  bytes: number;
+  elapsedMs: number;
+  bitrateKbps: number;
+  chunkCount: number;
 }
 
 /**
- * Recorder coordinates one Source -> one Sink.
+ * Record a live stream by piping one Source into one Sink.
  *
- * It opens the source stream, pumps bytes into the sink, reports progress,
- * and ensures the sink is closed when recording stops or errors.
+ * The returned Observable is cold: each subscription opens the source and sink
+ * anew. It emits {@link ProgressMetrics} at `progressIntervalMs` cadence
+ * (default 1000ms), including an initial emit, and completes when the sink
+ * finishes writing. Errors from the source or sink propagate to the subscriber.
+ * Unsubscribing or aborting the `AbortSignal` stops the recording and finalizes
+ * both sides.
  */
-export class Recorder<S = unknown, K = unknown> {
-  #options: RecorderOptions<S, K>;
-  #status: RecorderStatus = RecorderStatus.Idle;
-  #abortController = new AbortController();
-  #sourceStream: ReadableStream<Uint8Array> | null = null;
-  #sinkWriter: WritableStreamDefaultWriter<Uint8Array> | null = null;
-  #startTime = 0;
-  #bytes = 0;
-  #chunkCount = 0;
-  #progressTimer: number | null = null;
+export function record<S = unknown, K = unknown>(
+  options: RecorderOptions<S, K>,
+): Observable<ProgressMetrics> {
+  return defer(() => {
+    const startTime = performance.now();
+    let bytes = 0;
+    let chunkCount = 0;
 
-  constructor(options: RecorderOptions<S, K>) {
-    this.#options = options;
-    // Wire up an external AbortSignal so stop() is called automatically.
-    if (options.signal) {
-      options.signal.addEventListener("abort", () => this.stop());
-    }
-  }
+    const abort$ = abortSignal$(options.signal);
+    const stopped$ = new Subject<void>();
 
-  /** Current lifecycle state of the recorder. */
-  get status(): RecorderStatus {
-    return this.#status;
-  }
+    const source$ = options.source.open(options.sourceOptions).pipe(
+      takeUntil(abort$),
+      takeUntil(stopped$),
+      tap((chunk) => {
+        bytes += chunk.length;
+        chunkCount += 1;
+      }),
+    );
 
-  /** Start recording. Resolves when the source stream ends or stop() is called. */
-  async start(): Promise<void> {
-    if (this.#status === RecorderStatus.Running) return;
-    this.#status = RecorderStatus.Running;
-    this.#startTime = performance.now();
+    const sink$ = options.sink.write(source$, options.sinkOptions).pipe(
+      finalize(() => {
+        stopped$.next();
+        stopped$.complete();
+      }),
+    );
 
-    try {
-      this.#sourceStream = await this.#options.source.open(
-        this.#options.sourceOptions,
-      );
+    const intervalMs = options.progressIntervalMs ?? 1000;
+    const progress$ = interval(intervalMs).pipe(
+      takeUntil(stopped$),
+      startWith(0),
+      map(() => {
+        const elapsedMs = performance.now() - startTime;
+        return {
+          bytes,
+          elapsedMs,
+          bitrateKbps: elapsedMs > 0 ? (bytes * 8) / elapsedMs : 0,
+          chunkCount,
+        };
+      }),
+    );
 
-      const writable = await this.#options.sink.open(
-        this.#options.sinkOptions,
-      );
-      this.#sinkWriter = writable.getWriter();
-
-      this.#startProgress();
-      await this.#pumpSource();
-    } catch (error) {
-      this.#status = RecorderStatus.Error;
-      this.#options.onError?.(error, {});
-      throw error;
-    } finally {
-      await this.stop();
-    }
-  }
-
-  /** Stop recording and close the sink. Safe to call multiple times. */
-  async stop(): Promise<void> {
-    if (
-      this.#status === RecorderStatus.Stopped ||
-      this.#status === RecorderStatus.Error
-    ) return;
-    this.#status = RecorderStatus.Stopped;
-    this.#abortController.abort();
-    this.#stopProgress();
-
-    if (this.#sinkWriter) {
-      await ignore(this.#sinkWriter.close());
-      this.#sinkWriter = null;
-    }
-    await ignore(this.#options.source.close?.() ?? Promise.resolve());
-  }
-
-  /** Read from the source and write each chunk into the sink. */
-  async #pumpSource(): Promise<void> {
-    if (!this.#sourceStream || !this.#sinkWriter) return;
-
-    const reader = this.#sourceStream.getReader();
-
-    while (this.#status === RecorderStatus.Running) {
-      const result = await reader.read();
-      if (result.done) break;
-
-      const chunk = result.value;
-      this.#bytes += chunk.length;
-      this.#chunkCount += 1;
-
-      try {
-        await this.#sinkWriter.write(chunk);
-      } catch {
-        this.stop();
-      }
-    }
-
-    reader.releaseLock();
-  }
-
-  /** Emit throughput/health metrics at the configured interval while running. */
-  #startProgress(): void {
-    if (!this.#options.onProgress) return;
-    const intervalMs = this.#options.progressIntervalMs ?? 1000;
-    this.#progressTimer = setInterval(() => {
-      const elapsedMs = performance.now() - this.#startTime;
-      this.#options.onProgress?.({
-        bytes: this.#bytes,
-        elapsedMs,
-        bitrateKbps: elapsedMs > 0 ? (this.#bytes * 8) / elapsedMs : 0,
-        chunkCount: this.#chunkCount,
-      });
-    }, intervalMs) as unknown as number;
-  }
-
-  /** Stop emitting progress metrics. */
-  #stopProgress(): void {
-    if (this.#progressTimer !== null) {
-      clearInterval(this.#progressTimer);
-      this.#progressTimer = null;
-    }
-  }
+    return merge(progress$, sink$.pipe(ignoreElements()));
+  });
 }

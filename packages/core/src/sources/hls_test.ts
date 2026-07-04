@@ -1,5 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { HlsSource } from "@stream-fetcher/core";
+import { lastValueFrom, toArray } from "rxjs";
 
 Deno.test("HlsSource emits concatenated segment bytes for VOD playlist", async () => {
   const segments = ["hello", " ", "world"];
@@ -35,18 +36,11 @@ Deno.test("HlsSource emits concatenated segment bytes for VOD playlist", async (
 
   try {
     const source = new HlsSource();
-    const stream = await source.open({
+    const source$ = source.open({
       playlistUrl: `http://localhost:${port}/playlist.m3u8`,
     });
 
-    const reader = stream.getReader();
-    const chunks: Uint8Array[] = [];
-    while (true) {
-      const result = await reader.read();
-      if (result.done) break;
-      chunks.push(result.value);
-    }
-
+    const chunks = await lastValueFrom(source$.pipe(toArray()));
     const total = new TextDecoder().decode(concat(chunks));
 
     assertEquals(total, "hello world");
@@ -89,20 +83,13 @@ Deno.test("HlsSource refreshes live playlist and fetches new segments", async ()
 
   try {
     const source = new HlsSource();
-    const stream = await source.open({
+    const source$ = source.open({
       playlistUrl: `http://localhost:${port}/live.m3u8`,
       refreshIntervalMs: 50,
       maxRefreshCount: 4,
     });
 
-    const reader = stream.getReader();
-    const chunks: Uint8Array[] = [];
-    while (true) {
-      const result = await reader.read();
-      if (result.done) break;
-      chunks.push(result.value);
-    }
-
+    const chunks = await lastValueFrom(source$.pipe(toArray()));
     const total = new TextDecoder().decode(concat(chunks));
 
     assertEquals(total, "seg0seg1seg2seg3seg4");
@@ -149,18 +136,11 @@ Deno.test("HlsSource supports relative and absolute segment URLs", async () => {
 
   try {
     const source = new HlsSource();
-    const stream = await source.open({
+    const source$ = source.open({
       playlistUrl: `http://localhost:${port}/playlist.m3u8`,
     });
 
-    const reader = stream.getReader();
-    const chunks: Uint8Array[] = [];
-    while (true) {
-      const result = await reader.read();
-      if (result.done) break;
-      chunks.push(result.value);
-    }
-
+    const chunks = await lastValueFrom(source$.pipe(toArray()));
     const total = new TextDecoder().decode(concat(chunks));
 
     assertEquals(total, "absoluteremote");

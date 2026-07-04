@@ -1,6 +1,18 @@
 import { assertEquals } from "@std/assert";
-import { FileSink, Recorder, RecorderStatus } from "@stream-fetcher/core";
+import { FileSink, record } from "@stream-fetcher/core";
 import type { FileSystem, Source } from "@stream-fetcher/core";
+import type { ProgressMetrics } from "@stream-fetcher/core/recorder";
+import {
+  ignoreElements,
+  interval,
+  lastValueFrom,
+  map,
+  Observable,
+  of,
+  take,
+  tap,
+  timer,
+} from "rxjs";
 
 function createInMemoryFs(): {
   fs: FileSystem;
@@ -9,15 +21,13 @@ function createInMemoryFs(): {
   const files = new Map<string, Uint8Array>();
 
   const fs: FileSystem = {
-    open(path: string): Promise<WritableStream<Uint8Array>> {
-      const chunks: Uint8Array[] = [];
-      return Promise.resolve(
-        new WritableStream<Uint8Array>({
-          write(chunk) {
-            chunks.push(chunk.slice());
-            return Promise.resolve();
-          },
-          close() {
+    write(path: string, source$: Observable<Uint8Array>): Observable<void> {
+      return new Observable<void>((subscriber) => {
+        const chunks: Uint8Array[] = [];
+        const subscription = source$.subscribe({
+          next: (chunk) => chunks.push(chunk.slice()),
+          error: (err) => subscriber.error(err),
+          complete: () => {
             const total = chunks.reduce((acc, c) => acc + c.length, 0);
             const merged = new Uint8Array(total);
             let offset = 0;
@@ -26,13 +36,14 @@ function createInMemoryFs(): {
               offset += c.length;
             }
             files.set(path, merged);
-            return Promise.resolve();
+            subscriber.complete();
           },
-        }),
-      );
+        });
+        return () => subscription.unsubscribe();
+      });
     },
-    mkdir(): Promise<void> {
-      return Promise.resolve();
+    mkdir(): Observable<void> {
+      return of(undefined);
     },
   };
 
@@ -43,92 +54,75 @@ function arraySource(chunks: Uint8Array[]): Source<undefined> {
   return {
     name: "array",
     open() {
-      return Promise.resolve(
-        new ReadableStream<Uint8Array>({
-          pull(controller) {
-            const chunk = chunks.shift();
-            if (chunk) {
-              controller.enqueue(chunk);
-            } else {
-              controller.close();
-            }
-          },
-        }),
-      );
+      return new Observable<Uint8Array>((subscriber) => {
+        for (const chunk of chunks) {
+          subscriber.next(chunk);
+        }
+        subscriber.complete();
+      });
     },
   };
 }
 
-Deno.test("Recorder copies source bytes to a single file sink", async () => {
+Deno.test("record copies source bytes to a single file sink", async () => {
   const { fs, files } = createInMemoryFs();
   const chunks = [
     new TextEncoder().encode("hello "),
     new TextEncoder().encode("world"),
   ];
 
-  const recorder = new Recorder({
-    source: arraySource(chunks),
-    sink: new FileSink(),
-    sinkOptions: { path: "/tmp/test.bin", fs },
-  });
+  await lastValueFrom(
+    record({
+      source: arraySource(chunks),
+      sink: new FileSink(),
+      sinkOptions: { path: "/tmp/test.bin", fs },
+    }).pipe(ignoreElements()),
+    { defaultValue: undefined },
+  );
 
-  await recorder.start();
-
-  assertEquals(recorder.status, RecorderStatus.Stopped);
   assertEquals(
     new TextDecoder().decode(files.get("/tmp/test.bin")),
     "hello world",
   );
 });
 
-Deno.test("Recorder reports progress", async () => {
+Deno.test("record emits progress metrics and completes", async () => {
   const { fs } = createInMemoryFs();
   const chunks: Uint8Array[] = [];
   for (let i = 0; i < 5; i++) {
     chunks.push(new TextEncoder().encode(`chunk-${i}\n`));
   }
 
-  const progressEvents: Parameters<
-    NonNullable<ConstructorParameters<typeof Recorder>[0]["onProgress"]>
-  >[0][] = [];
+  const progressEvents: ProgressMetrics[] = [];
 
   const source: Source<undefined> = {
     name: "slow-array",
     open() {
-      let index = 0;
-      return Promise.resolve(
-        new ReadableStream<Uint8Array>({
-          async pull(controller) {
-            if (index < chunks.length) {
-              controller.enqueue(chunks[index++]);
-              await new Promise((r) => setTimeout(r, 100));
-            } else {
-              controller.close();
-            }
-          },
-        }),
+      return timer(0, 100).pipe(
+        take(chunks.length),
+        map((i) => chunks[i]),
       );
     },
   };
 
-  const recorder = new Recorder({
-    source,
-    sink: new FileSink(),
-    sinkOptions: { path: "/tmp/progress.bin", fs },
-    progressIntervalMs: 50,
-    onProgress(metrics) {
-      progressEvents.push(metrics);
-    },
-  });
-
-  await recorder.start();
+  await lastValueFrom(
+    record({
+      source,
+      sink: new FileSink(),
+      sinkOptions: { path: "/tmp/progress.bin", fs },
+      progressIntervalMs: 50,
+    }).pipe(tap((metrics) => progressEvents.push(metrics))),
+    { defaultValue: undefined },
+  );
 
   assertEquals(progressEvents.length >= 1, true);
-  assertEquals(progressEvents[0].bytes >= 1, true);
-  assertEquals(progressEvents[0].chunkCount >= 1, true);
+  assertEquals(progressEvents[0].bytes, 0);
+  assertEquals(progressEvents[0].chunkCount, 0);
+  assertEquals(progressEvents[progressEvents.length - 1].bytes > 0, true);
+  assertEquals(progressEvents[progressEvents.length - 1].chunkCount > 0, true);
 });
 
-Deno.test("Recorder stops early when aborted", async () => {
+Deno.test("record stops early when aborted", async () => {
   const { fs, files } = createInMemoryFs();
   const controller = new AbortController();
   const chunks: Uint8Array[] = [];
@@ -139,34 +133,54 @@ Deno.test("Recorder stops early when aborted", async () => {
   const source: Source<undefined> = {
     name: "slow-array",
     open() {
-      let index = 0;
-      return Promise.resolve(
-        new ReadableStream<Uint8Array>({
-          async pull(controller) {
-            if (index < chunks.length) {
-              controller.enqueue(chunks[index++]);
-              await new Promise((r) => setTimeout(r, 50));
-            } else {
-              controller.close();
-            }
-          },
-        }),
+      return interval(50).pipe(
+        take(chunks.length),
+        map((i) => chunks[i]),
       );
     },
   };
 
-  const recorder = new Recorder({
-    source,
-    sink: new FileSink(),
-    sinkOptions: { path: "/tmp/aborted.bin", fs },
-    signal: controller.signal,
-  });
-
-  const startPromise = recorder.start();
   setTimeout(() => controller.abort(), 75);
-  await startPromise;
 
-  assertEquals(recorder.status, RecorderStatus.Stopped);
+  await lastValueFrom(
+    record({
+      source,
+      sink: new FileSink(),
+      sinkOptions: { path: "/tmp/aborted.bin", fs },
+      signal: controller.signal,
+    }).pipe(ignoreElements()),
+    { defaultValue: undefined },
+  );
+
   const file = files.get("/tmp/aborted.bin");
   assertEquals(file !== undefined && file.length < 1000, true);
+});
+
+Deno.test("record stops early on unsubscribe", async () => {
+  const { fs } = createInMemoryFs();
+  let chunkCount = 0;
+
+  const source: Source<undefined> = {
+    name: "counting-array",
+    open() {
+      return interval(50).pipe(
+        take(100),
+        tap(() => chunkCount++),
+        map((i) => new TextEncoder().encode(`chunk-${i}\n`)),
+      );
+    },
+  };
+
+  const subscription = record({
+    source,
+    sink: new FileSink(),
+    sinkOptions: { path: "/tmp/unsubscribed.bin", fs },
+  }).subscribe();
+
+  await new Promise((resolve) => setTimeout(resolve, 75));
+  const countAtUnsubscribe = chunkCount;
+  subscription.unsubscribe();
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assertEquals(chunkCount, countAtUnsubscribe);
 });

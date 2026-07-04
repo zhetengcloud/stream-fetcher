@@ -1,5 +1,6 @@
 import { assertEquals, assertExists } from "@std/assert";
 import { S3Sink } from "@stream-fetcher/core/sinks/s3";
+import { lastValueFrom, Observable } from "rxjs";
 
 interface CapturedRequest {
   method: string;
@@ -72,20 +73,23 @@ Deno.test("S3Sink performs multipart upload to a mock S3 server", async () => {
 
   try {
     const sink = new S3Sink();
-    const stream = await sink.open({
-      endpoint: url,
-      bucket: "test-bucket",
-      key: "stream.ts",
-      accessKeyId: "AKIAIOSFODNN7EXAMPLE",
-      secretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-      region: "us-east-1",
-      partSize: 10,
+    const source$ = new Observable<Uint8Array>((subscriber) => {
+      subscriber.next(new TextEncoder().encode("0123456789"));
+      subscriber.next(new TextEncoder().encode("abcdefghij"));
+      subscriber.complete();
     });
 
-    const writer = stream.getWriter();
-    await writer.write(new TextEncoder().encode("0123456789"));
-    await writer.write(new TextEncoder().encode("abcdefghij"));
-    await writer.close();
+    await lastValueFrom(
+      sink.write(source$, {
+        endpoint: url,
+        bucket: "test-bucket",
+        key: "stream.ts",
+        accessKeyId: "AKIAIOSFODNN7EXAMPLE",
+        secretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+        region: "us-east-1",
+        partSize: 10,
+      }),
+    );
 
     const initiate = requests.find((r) => r.url.includes("uploads="));
     assertExists(initiate);

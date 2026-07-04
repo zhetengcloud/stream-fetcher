@@ -1,3 +1,4 @@
+import { Observable } from "rxjs";
 import type { Source } from "@stream-fetcher/core/types";
 
 /** Options for the generic HTTP(S) source. */
@@ -10,29 +11,53 @@ export interface HttpSourceOptions {
 /** Fetches a raw HTTP(S) stream and exposes it as a Source. */
 export class HttpSource implements Source<HttpSourceOptions> {
   readonly name = "http";
-  #response: Response | null = null;
 
-  async open(options: HttpSourceOptions): Promise<ReadableStream<Uint8Array>> {
-    this.#response = await fetch(options.url, {
-      headers: options.headers,
-      signal: options.signal,
+  open(options: HttpSourceOptions): Observable<Uint8Array> {
+    return new Observable<Uint8Array>((subscriber) => {
+      const controller = new AbortController();
+
+      if (options.signal) {
+        if (options.signal.aborted) {
+          controller.abort();
+        } else {
+          options.signal.addEventListener("abort", () => controller.abort());
+        }
+      }
+
+      fetch(options.url, {
+        headers: options.headers,
+        signal: controller.signal,
+      })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(
+              `HTTP ${response.status}: ${response.statusText}`,
+            );
+          }
+          if (!response.body) {
+            throw new Error("Response body is null");
+          }
+
+          const reader = response.body.getReader();
+
+          const pump = (): Promise<void> =>
+            reader.read().then((result) => {
+              if (subscriber.closed) return;
+              if (result.done) {
+                subscriber.complete();
+                return;
+              }
+              subscriber.next(result.value);
+              return pump();
+            });
+
+          return pump().catch((err) => subscriber.error(err));
+        })
+        .catch((err) => subscriber.error(err));
+
+      return () => {
+        controller.abort();
+      };
     });
-
-    if (!this.#response.ok) {
-      throw new Error(
-        `HTTP ${this.#response.status}: ${this.#response.statusText}`,
-      );
-    }
-
-    if (!this.#response.body) {
-      throw new Error("Response body is null");
-    }
-
-    return this.#response.body;
-  }
-
-  close(): Promise<void> {
-    this.#response = null;
-    return Promise.resolve();
   }
 }

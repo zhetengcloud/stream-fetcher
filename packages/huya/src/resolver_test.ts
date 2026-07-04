@@ -1,6 +1,7 @@
 import { assertEquals, assertExists } from "@std/assert";
 import { HuyaProtocol, HuyaResolver } from "@stream-fetcher/huya";
 import { messages } from "@stream-fetcher/huya/messages";
+import { lastValueFrom } from "rxjs";
 
 const ROOM_PAGE_TEMPLATE = `
 <!DOCTYPE html>
@@ -64,10 +65,12 @@ Deno.test("HuyaResolver resolves a room URL into a Source", async () => {
   const port = (server.addr as Deno.NetAddr).port;
 
   try {
-    const source = await resolver.resolve(`https://www.huya.com/testroom`, {
-      protocol: HuyaProtocol.Flv,
-      _webBase: `http://localhost:${port}`,
-    });
+    const source = await lastValueFrom(
+      resolver.resolve(`https://www.huya.com/testroom`, {
+        protocol: HuyaProtocol.Flv,
+        _webBase: `http://localhost:${port}`,
+      }),
+    );
 
     assertEquals(source.name, "huya");
     assertExists(source.open);
@@ -103,11 +106,13 @@ Deno.test("HuyaResolver prefers selected CDN", async () => {
   const port = (server.addr as Deno.NetAddr).port;
 
   try {
-    const source = await resolver.resolve(`https://www.huya.com/testroom`, {
-      protocol: HuyaProtocol.Flv,
-      cdn: "HW",
-      _webBase: `http://localhost:${port}`,
-    });
+    const source = await lastValueFrom(
+      resolver.resolve(`https://www.huya.com/testroom`, {
+        protocol: HuyaProtocol.Flv,
+        cdn: "HW",
+        _webBase: `http://localhost:${port}`,
+      }),
+    );
 
     // The resolver should select the HW CDN over the higher-priority TX CDN.
     assertEquals(source.name, "huya");
@@ -141,9 +146,11 @@ Deno.test("HuyaResolver rejects offline rooms", async () => {
   try {
     let caught = false;
     try {
-      await resolver.resolve(`https://www.huya.com/offline`, {
-        _webBase: `http://localhost:${port}`,
-      });
+      await lastValueFrom(
+        resolver.resolve(`https://www.huya.com/offline`, {
+          _webBase: `http://localhost:${port}`,
+        }),
+      );
     } catch (err) {
       caught = true;
       assertEquals(
@@ -196,9 +203,11 @@ Deno.test("HuyaResolver rejects replays", async () => {
   try {
     let caught = false;
     try {
-      await resolver.resolve(`https://www.huya.com/replay`, {
-        _webBase: `http://localhost:${port}`,
-      });
+      await lastValueFrom(
+        resolver.resolve(`https://www.huya.com/replay`, {
+          _webBase: `http://localhost:${port}`,
+        }),
+      );
     } catch (err) {
       caught = true;
       assertEquals(

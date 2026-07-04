@@ -1,24 +1,25 @@
 import type { Sink } from "@stream-fetcher/core/types";
+import { Observable } from "rxjs";
 
-/** Writes the stream to Deno's stdout. */
+/** Writes the Observable's chunks to Deno's stdout. */
 export class StdoutSink implements Sink<undefined> {
   readonly name = "stdout";
 
-  open(): Promise<WritableStream<Uint8Array>> {
-    const writer = Deno.stdout.writable.getWriter();
-
-    return Promise.resolve(
-      new WritableStream<Uint8Array>({
-        write(chunk) {
-          return writer.write(chunk);
+  write(source$: Observable<Uint8Array>): Observable<void> {
+    return new Observable<void>((subscriber) => {
+      const writer = Deno.stdout.writable.getWriter();
+      const subscription = source$.subscribe({
+        next: (chunk) => writer.write(chunk),
+        error: (err) => {
+          writer.abort(err).catch(() => {});
+          subscriber.error(err);
         },
-        close() {
-          return writer.releaseLock();
-        },
-        abort() {
+        complete: () => {
           writer.releaseLock();
+          subscriber.complete();
         },
-      }),
-    );
+      });
+      subscriber.add(() => subscription.unsubscribe());
+    });
   }
 }

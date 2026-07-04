@@ -1,6 +1,7 @@
 import type { Resolver, Source } from "@stream-fetcher/core/types";
 import { HlsSource } from "@stream-fetcher/core/sources/hls";
 import { HttpSource } from "@stream-fetcher/core/sources/http";
+import { defer, type Observable, of, switchMap } from "rxjs";
 import { messages } from "./messages.ts";
 
 const BILIBILI_API_BASE = "https://api.live.bilibili.com";
@@ -44,10 +45,10 @@ export class BilibiliResolver implements Resolver<BilibiliResolverOptions> {
     return this.#roomPattern.test(url);
   }
 
-  async resolve(
+  resolve(
     url: string,
     options: BilibiliResolverOptions = {},
-  ): Promise<Source> {
+  ): Observable<Source> {
     const match = this.#roomPattern.exec(url);
     if (!match) throw new Error(messages.errors.invalidUrl(url));
     const roomId = match[1];
@@ -58,72 +59,72 @@ export class BilibiliResolver implements Resolver<BilibiliResolverOptions> {
       cookie,
       _apiBase,
     } = options;
-    const streamUrl = await this.#fetchStreamUrl(
-      roomId,
-      qn,
-      protocol,
-      cookie,
-      _apiBase,
-    );
 
     const isHls = protocol === BilibiliProtocol.Hls;
-
-    return {
-      name: "bilibili",
-      open: () => {
-        const headers = {
-          "user-agent": BILIBILI_USER_AGENT,
-          referer: BILIBILI_REFERER,
-          ...(cookie ? { cookie } : {}),
-        };
-        if (isHls) {
-          return new HlsSource().open({
-            playlistUrl: streamUrl,
-            headers,
-          });
-        }
-        return new HttpSource().open({ url: streamUrl, headers });
-      },
+    const headers = {
+      "user-agent": BILIBILI_USER_AGENT,
+      referer: BILIBILI_REFERER,
+      ...(cookie ? { cookie } : {}),
     };
+
+    return this.#fetchStreamUrl(roomId, qn, protocol, cookie, _apiBase).pipe(
+      switchMap((streamUrl) => {
+        const source: Source = {
+          name: "bilibili",
+          open: () => {
+            if (isHls) {
+              return new HlsSource().open({
+                playlistUrl: streamUrl,
+                headers,
+              });
+            }
+            return new HttpSource().open({ url: streamUrl, headers });
+          },
+        };
+        return of(source);
+      }),
+    );
   }
 
-  async #fetchStreamUrl(
+  #fetchStreamUrl(
     roomId: string,
     qn: number,
     protocol: BilibiliProtocol,
     cookie: string | undefined,
     apiBase: string | undefined,
-  ): Promise<string> {
-    const platform = protocol === BilibiliProtocol.Hls ? "hls" : "web";
-    const apiUrl = new URL(
-      "/room/v1/Room/playUrl",
-      (apiBase ?? BILIBILI_API_BASE).replace(/\/$/, "") + "/",
-    );
-    apiUrl.searchParams.set("cid", roomId);
-    apiUrl.searchParams.set("qn", String(qn));
-    apiUrl.searchParams.set("platform", platform);
+  ): Observable<string> {
+    return defer(async () => {
+      const platform = protocol === BilibiliProtocol.Hls ? "hls" : "web";
+      const apiUrl = new URL(
+        "/room/v1/Room/playUrl",
+        (apiBase ?? BILIBILI_API_BASE).replace(/\/$/, "") + "/",
+      );
+      apiUrl.searchParams.set("cid", roomId);
+      apiUrl.searchParams.set("qn", String(qn));
+      apiUrl.searchParams.set("platform", platform);
 
-    const headers: Record<string, string> = {
-      "user-agent": BILIBILI_USER_AGENT,
-      referer: BILIBILI_REFERER,
-    };
-    if (cookie) headers.cookie = cookie;
+      const headers: Record<string, string> = {
+        "user-agent": BILIBILI_USER_AGENT,
+        referer: BILIBILI_REFERER,
+      };
+      if (cookie) headers.cookie = cookie;
 
-    const response = await fetch(apiUrl, { headers });
-    if (!response.ok) {
-      throw new Error(messages.errors.playUrlRequestFailed(response.status));
-    }
+      const response = await fetch(apiUrl, { headers });
+      if (!response.ok) {
+        throw new Error(messages.errors.playUrlRequestFailed(response.status));
+      }
 
-    const data = (await response.json()) as PlayUrlResponse;
-    if (data.code !== 0) {
-      throw new Error(messages.errors.playUrlError(data.message, data.code));
-    }
+      const data = (await response.json()) as PlayUrlResponse;
+      if (data.code !== 0) {
+        throw new Error(messages.errors.playUrlError(data.message, data.code));
+      }
 
-    const urls = data.data?.durl;
-    if (!urls || urls.length === 0) {
-      throw new Error(messages.errors.streamUrlNotFound);
-    }
+      const urls = data.data?.durl;
+      if (!urls || urls.length === 0) {
+        throw new Error(messages.errors.streamUrlNotFound);
+      }
 
-    return urls[0].url;
+      return urls[0].url;
+    });
   }
 }
