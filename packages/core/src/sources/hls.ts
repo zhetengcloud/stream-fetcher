@@ -1,13 +1,14 @@
 import type { Source } from "@stream-fetcher/core/types";
 import {
   concatMap,
-  defer,
   finalize,
   from,
   interval,
+  map,
   type Observable,
   scan,
   startWith,
+  switchMap,
   take,
   takeWhile,
 } from "rxjs";
@@ -108,14 +109,15 @@ export class HlsSource implements Source<HlsSourceOptions> {
     headers: Record<string, string> | undefined,
     signal: AbortSignal,
   ): Observable<ParsedPlaylist> {
-    return defer(async () => {
-      const response = await fetch(url, { headers, signal });
-      if (!response.ok) {
-        throw new Error(`HLS playlist request failed: ${response.status}`);
-      }
-      const text = await response.text();
-      return this.#parsePlaylist(text);
-    });
+    return from(fetch(url, { headers, signal })).pipe(
+      switchMap((response) => {
+        if (!response.ok) {
+          throw new Error(`HLS playlist request failed: ${response.status}`);
+        }
+        return from(response.text());
+      }),
+      map((text) => this.#parsePlaylist(text)),
+    );
   }
 
   #parsePlaylist(text: string): ParsedPlaylist {
@@ -154,13 +156,14 @@ export class HlsSource implements Source<HlsSourceOptions> {
     headers: Record<string, string> | undefined,
     signal: AbortSignal,
   ): Observable<Uint8Array> {
-    return defer(async () => {
-      const response = await fetch(url, { headers, signal });
-      if (!response.ok) {
-        throw new Error(`HLS segment request failed: ${response.status}`);
-      }
-      return new Uint8Array(await response.arrayBuffer());
-    });
+    return from(fetch(url, { headers, signal })).pipe(
+      switchMap(async (response) => {
+        if (!response.ok) {
+          throw new Error(`HLS segment request failed: ${response.status}`);
+        }
+        return new Uint8Array(await response.arrayBuffer());
+      }),
+    );
   }
 }
 
