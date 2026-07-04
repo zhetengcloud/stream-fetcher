@@ -10,8 +10,6 @@ export interface Source<T = unknown> {
    * stream ends. Unsubscribing aborts the underlying request.
    */
   open(options?: T): Observable<Uint8Array>;
-  /** Optional cleanup after the stream ends. */
-  close?(): Observable<void>;
 }
 
 /** Consumes a byte stream and writes it somewhere. */
@@ -19,8 +17,6 @@ export interface Sink<T = unknown> {
   readonly name: string;
   /** Consumes the source observable and completes/errors when finalized. */
   write(source$: Observable<Uint8Array>, options?: T): Observable<void>;
-  /** Optional cleanup after the destination closes. */
-  close?(): Observable<void>;
 }
 
 /** Metadata describing a resolved live stream. */

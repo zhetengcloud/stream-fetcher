@@ -2,10 +2,10 @@ import type { Source } from "@stream-fetcher/core/types";
 import {
   concatMap,
   defer,
+  finalize,
   from,
   interval,
   type Observable,
-  of,
   scan,
   startWith,
   take,
@@ -39,12 +39,12 @@ export interface HlsSourceOptions {
  */
 export class HlsSource implements Source<HlsSourceOptions> {
   readonly name = "hls";
-  #abortController = new AbortController();
 
   open(options: HlsSourceOptions): Observable<Uint8Array> {
     const refreshIntervalMs = options.refreshIntervalMs ?? 2000;
     const maxRefreshCount = options.maxRefreshCount ?? Infinity;
-    const signal = this.#combineSignals(options.signal);
+    const abortController = new AbortController();
+    const signal = this.#combineSignals(abortController, options.signal);
     const baseUrl = new URL(options.playlistUrl);
 
     return this.#createBytesObservable({
@@ -53,22 +53,22 @@ export class HlsSource implements Source<HlsSourceOptions> {
       refreshIntervalMs,
       maxRefreshCount,
       signal,
-    });
+    }).pipe(
+      finalize(() => abortController.abort()),
+    );
   }
 
-  close(): Observable<void> {
-    this.#abortController.abort();
-    return of(undefined);
-  }
-
-  #combineSignals(external?: AbortSignal): AbortSignal {
-    if (!external) return this.#abortController.signal;
+  #combineSignals(
+    controller: AbortController,
+    external?: AbortSignal,
+  ): AbortSignal {
+    if (!external) return controller.signal;
     if (external.aborted) {
-      this.#abortController.abort();
-      return this.#abortController.signal;
+      controller.abort();
+      return controller.signal;
     }
-    external.addEventListener("abort", () => this.#abortController.abort());
-    return this.#abortController.signal;
+    external.addEventListener("abort", () => controller.abort());
+    return controller.signal;
   }
 
   #createBytesObservable(
