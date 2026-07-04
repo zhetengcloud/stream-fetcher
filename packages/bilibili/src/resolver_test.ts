@@ -23,7 +23,7 @@ Deno.test("BilibiliResolver resolves a room URL into a Source", async () => {
   const port = (server.addr as Deno.NetAddr).port;
 
   try {
-    const source = await lastValueFrom(
+    const resolved = await lastValueFrom(
       resolver.resolve(`https://live.bilibili.com/12345`, {
         qn: 10000,
         protocol: BilibiliProtocol.Flv,
@@ -31,8 +31,15 @@ Deno.test("BilibiliResolver resolves a room URL into a Source", async () => {
       }),
     );
 
-    assertEquals(source.name, "bilibili");
-    assertExists(source.open);
+    assertEquals(resolved.source.name, "bilibili");
+    assertExists(resolved.source.open);
+    assertEquals(resolved.metadata.platform, "bilibili");
+    assertEquals(resolved.metadata.format, BilibiliProtocol.Flv);
+    assertEquals(resolved.metadata.roomId, "12345");
+    assertEquals(
+      resolved.metadata.playUrl,
+      "https://live.example.com/stream.flv",
+    );
   } finally {
     await server.shutdown();
   }

@@ -65,15 +65,19 @@ Deno.test("HuyaResolver resolves a room URL into a Source", async () => {
   const port = (server.addr as Deno.NetAddr).port;
 
   try {
-    const source = await lastValueFrom(
+    const resolved = await lastValueFrom(
       resolver.resolve(`https://www.huya.com/testroom`, {
         protocol: HuyaProtocol.Flv,
         _webBase: `http://localhost:${port}`,
       }),
     );
 
-    assertEquals(source.name, "huya");
-    assertExists(source.open);
+    assertEquals(resolved.source.name, "huya");
+    assertExists(resolved.source.open);
+    assertEquals(resolved.metadata.platform, "huya");
+    assertEquals(resolved.metadata.format, HuyaProtocol.Flv);
+    assertEquals(resolved.metadata.roomId, "testroom");
+    assertEquals(typeof resolved.metadata.playUrl, "string");
 
     // Do not open the HTTP source in unit tests; it would hit example.com.
     // Verifying the source is returned is sufficient here.
@@ -106,7 +110,7 @@ Deno.test("HuyaResolver prefers selected CDN", async () => {
   const port = (server.addr as Deno.NetAddr).port;
 
   try {
-    const source = await lastValueFrom(
+    const resolved = await lastValueFrom(
       resolver.resolve(`https://www.huya.com/testroom`, {
         protocol: HuyaProtocol.Flv,
         cdn: "HW",
@@ -115,8 +119,8 @@ Deno.test("HuyaResolver prefers selected CDN", async () => {
     );
 
     // The resolver should select the HW CDN over the higher-priority TX CDN.
-    assertEquals(source.name, "huya");
-    assertExists(source.open);
+    assertEquals(resolved.source.name, "huya");
+    assertExists(resolved.source.open);
   } finally {
     await server.shutdown();
   }

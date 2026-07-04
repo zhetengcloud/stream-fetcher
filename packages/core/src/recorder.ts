@@ -1,4 +1,7 @@
-import type { RecorderOptions } from "@stream-fetcher/core/types";
+import type {
+  RecorderOptions,
+  StreamMetadata,
+} from "@stream-fetcher/core/types";
 import {
   defer,
   EMPTY,
@@ -38,6 +41,7 @@ export interface ProgressMetrics {
   elapsedMs: number;
   bitrateKbps: number;
   chunkCount: number;
+  metadata?: StreamMetadata;
 }
 
 /**

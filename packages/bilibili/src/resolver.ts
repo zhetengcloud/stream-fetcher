@@ -1,4 +1,4 @@
-import type { Resolver, Source } from "@stream-fetcher/core/types";
+import type { ResolvedStream, Resolver } from "@stream-fetcher/core/types";
 import { HlsSource } from "@stream-fetcher/core/sources/hls";
 import { HttpSource } from "@stream-fetcher/core/sources/http";
 import { defer, type Observable, of, switchMap } from "rxjs";
@@ -31,11 +31,12 @@ interface PlayUrlResponse {
   data?: {
     current_qn?: number;
     quality_description?: Array<{ qn: number; desc: string }>;
+    title?: string;
     durl?: Array<{ url: string }>;
   };
 }
 
-/** Resolves Bilibili live room URLs into an HttpSource. */
+/** Resolves Bilibili live room URLs into a ResolvedStream. */
 export class BilibiliResolver implements Resolver<BilibiliResolverOptions> {
   readonly platform = "bilibili";
   readonly #roomPattern =
@@ -48,7 +49,7 @@ export class BilibiliResolver implements Resolver<BilibiliResolverOptions> {
   resolve(
     url: string,
     options: BilibiliResolverOptions = {},
-  ): Observable<Source> {
+  ): Observable<ResolvedStream> {
     const match = this.#roomPattern.exec(url);
     if (!match) throw new Error(messages.errors.invalidUrl(url));
     const roomId = match[1];
@@ -68,8 +69,16 @@ export class BilibiliResolver implements Resolver<BilibiliResolverOptions> {
     };
 
     return this.#fetchStreamUrl(roomId, qn, protocol, cookie, _apiBase).pipe(
-      switchMap((streamUrl) => {
-        const source: Source = {
+      switchMap(({ streamUrl, title }) => {
+        const metadata = {
+          platform: this.platform,
+          format: protocol,
+          title,
+          roomId,
+          playUrl: streamUrl,
+          resolvedAt: new Date(),
+        };
+        const source = {
           name: "bilibili",
           open: () => {
             if (isHls) {
@@ -81,7 +90,7 @@ export class BilibiliResolver implements Resolver<BilibiliResolverOptions> {
             return new HttpSource().open({ url: streamUrl, headers });
           },
         };
-        return of(source);
+        return of({ metadata, source });
       }),
     );
   }
@@ -92,7 +101,7 @@ export class BilibiliResolver implements Resolver<BilibiliResolverOptions> {
     protocol: BilibiliProtocol,
     cookie: string | undefined,
     apiBase: string | undefined,
-  ): Observable<string> {
+  ): Observable<{ streamUrl: string; title?: string }> {
     return defer(async () => {
       const platform = protocol === BilibiliProtocol.Hls ? "hls" : "web";
       const apiUrl = new URL(
@@ -124,7 +133,10 @@ export class BilibiliResolver implements Resolver<BilibiliResolverOptions> {
         throw new Error(messages.errors.streamUrlNotFound);
       }
 
-      return urls[0].url;
+      return {
+        streamUrl: urls[0].url,
+        title: data.data?.title,
+      };
     });
   }
 }

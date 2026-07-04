@@ -23,6 +23,34 @@ export interface Sink<T = unknown> {
   close?(): Observable<void>;
 }
 
+/** Metadata describing a resolved live stream. */
+export interface StreamMetadata {
+  /** Platform that produced the stream (e.g. "bilibili", "huya"). */
+  platform: string;
+  /** Container/protocol format (e.g. "flv", "hls"). */
+  format: string;
+  /** Human-readable stream title. */
+  title?: string;
+  /** Platform room identifier. */
+  roomId?: string;
+  /** Display name of the streamer, if available. */
+  anchor?: string;
+  /** URL resolved for playback. */
+  playUrl: string;
+  /** Cover image URL, if available. */
+  cover?: string;
+  /** Maximum bitrate advertised by the platform, in bits per second. */
+  maxBitrate?: number;
+  /** Time the stream metadata was produced. */
+  resolvedAt?: Date;
+}
+
+/** Result of resolving a platform URL: structured metadata plus the byte Source. */
+export interface ResolvedStream<S = unknown> {
+  metadata: StreamMetadata;
+  source: Source<S>;
+}
+
 /** Configuration for a recording session. */
 export interface RecorderOptions<S, K> {
   source: Source<S>;
@@ -34,11 +62,11 @@ export interface RecorderOptions<S, K> {
   progressIntervalMs?: number;
 }
 
-/** Converts a platform URL (e.g. Bilibili room) into a Source. */
+/** Converts a platform URL (e.g. Bilibili room) into a ResolvedStream. */
 export interface Resolver<T = unknown> {
   readonly platform: string;
   canHandle(url: string): boolean;
-  resolve(url: string, options?: T): Observable<Source>;
+  resolve(url: string, options?: T): Observable<ResolvedStream>;
 }
 
 /** Options for StreamDetector polling. */

@@ -1,4 +1,4 @@
-import type { Resolver, Source } from "@stream-fetcher/core/types";
+import type { ResolvedStream, Resolver } from "@stream-fetcher/core/types";
 import { HlsSource } from "@stream-fetcher/core/sources/hls";
 import { HttpSource } from "@stream-fetcher/core/sources/http";
 import md5 from "md5";
@@ -49,7 +49,7 @@ interface RoomProfile {
   streamInfo: StreamInfo[];
 }
 
-/** Resolves Huya live room URLs into an HttpSource. */
+/** Resolves Huya live room URLs into a ResolvedStream. */
 export class HuyaResolver implements Resolver<HuyaResolverOptions> {
   readonly platform = "huya";
   readonly #roomPattern = /(?:https?:\/\/)?(?:www\.|m\.)?huya\.com\/([\w-]+)/;
@@ -61,7 +61,7 @@ export class HuyaResolver implements Resolver<HuyaResolverOptions> {
   resolve(
     url: string,
     options: HuyaResolverOptions = {},
-  ): Observable<Source> {
+  ): Observable<ResolvedStream> {
     const match = this.#roomPattern.exec(url);
     if (!match) throw new Error(messages.errors.invalidUrl(url));
     const roomId = match[1];
@@ -87,8 +87,18 @@ export class HuyaResolver implements Resolver<HuyaResolverOptions> {
       maxRatio,
       _webBase,
     ).pipe(
-      switchMap((streamUrl) => {
-        const source: Source = {
+      switchMap(({ streamUrl, title, cover, maxBitrate }) => {
+        const metadata = {
+          platform: this.platform,
+          format: protocol,
+          title,
+          roomId,
+          playUrl: streamUrl,
+          cover,
+          maxBitrate,
+          resolvedAt: new Date(),
+        };
+        const source = {
           name: "huya",
           open: () => {
             if (isHls) {
@@ -100,7 +110,7 @@ export class HuyaResolver implements Resolver<HuyaResolverOptions> {
             return new HttpSource().open({ url: streamUrl, headers });
           },
         };
-        return of(source);
+        return of({ metadata, source });
       }),
     );
   }
@@ -112,7 +122,9 @@ export class HuyaResolver implements Resolver<HuyaResolverOptions> {
     preferredCdn: string | undefined,
     maxRatio: number,
     webBase: string | undefined,
-  ): Observable<string> {
+  ): Observable<
+    { streamUrl: string; title: string; cover: string; maxBitrate: number }
+  > {
     return defer(async () => {
       const page = await this.#getRoomPage(referer, roomId, webBase);
 
@@ -134,12 +146,19 @@ export class HuyaResolver implements Resolver<HuyaResolverOptions> {
 
       const streamUrls = this.#buildStreamUrls(profile.streamInfo, protocol);
       const selectedUrl = this.#selectStreamUrl(streamUrls, preferredCdn);
-      return this.#applyRatio(
+      const streamUrl = this.#applyRatio(
         selectedUrl,
         profile.bitrateInfo,
         profile.maxBitrate,
         maxRatio,
       );
+
+      return {
+        streamUrl,
+        title: profile.title,
+        cover: profile.cover,
+        maxBitrate: profile.maxBitrate,
+      };
     });
   }
 
