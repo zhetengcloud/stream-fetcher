@@ -1,4 +1,15 @@
 import type { Source } from "@stream-fetcher/core/types";
+import {
+  concatMap,
+  from,
+  interval,
+  type Observable,
+  scan,
+  startWith,
+  take,
+  takeWhile,
+} from "rxjs";
+import { readableStreamFromObservable } from "../utils/observable_to_stream.ts";
 
 /** Options for the HLS source. */
 export interface HlsSourceOptions {
@@ -34,29 +45,16 @@ export class HlsSource implements Source<HlsSourceOptions> {
     const maxRefreshCount = options.maxRefreshCount ?? Infinity;
     const signal = this.#combineSignals(options.signal);
     const baseUrl = new URL(options.playlistUrl);
-    const fetchedSegments = new Set<string>();
 
-    const generator = this.#fetchSegmentBytes({
+    const bytes$ = this.#createBytesObservable({
       baseUrl,
       headers: options.headers,
       refreshIntervalMs,
       maxRefreshCount,
       signal,
-      fetchedSegments,
     });
 
-    return Promise.resolve(
-      new ReadableStream<Uint8Array>({
-        pull: async (controller) => {
-          const result = await generator.next();
-          if (result.done) {
-            controller.close();
-          } else {
-            controller.enqueue(result.value);
-          }
-        },
-      }),
-    );
+    return Promise.resolve(readableStreamFromObservable(bytes$));
   }
 
   close(): Promise<void> {
@@ -74,36 +72,36 @@ export class HlsSource implements Source<HlsSourceOptions> {
     return this.#abortController.signal;
   }
 
-  async *#fetchSegmentBytes(
-    ctx: FetchSegmentBytesContext,
-  ): AsyncGenerator<Uint8Array> {
-    for (
-      let refreshCount = 0;
-      refreshCount <= ctx.maxRefreshCount && !ctx.signal.aborted;
-      refreshCount++
-    ) {
-      const playlist = await this.#fetchPlaylist(
-        ctx.baseUrl,
-        ctx.headers,
-        ctx.signal,
-      );
+  #createBytesObservable(
+    ctx: BytesObservableContext,
+  ): Observable<Uint8Array> {
+    const initialState: PollState = {
+      playlist: null,
+      fetched: new Set<string>(),
+      pending: [],
+    };
 
-      for (const segmentUrl of this.#parseSegments(playlist, ctx.baseUrl)) {
-        if (ctx.signal.aborted) return;
-        if (ctx.fetchedSegments.has(segmentUrl)) continue;
-        ctx.fetchedSegments.add(segmentUrl);
-
-        yield await this.#fetchSegment(segmentUrl, ctx.headers, ctx.signal);
-      }
-
-      if (playlist.isEndlist || ctx.signal.aborted) {
-        return;
-      }
-
-      if (refreshCount < ctx.maxRefreshCount) {
-        await this.#delay(ctx.refreshIntervalMs, ctx.signal);
-      }
-    }
+    return interval(ctx.refreshIntervalMs).pipe(
+      startWith(0),
+      takeWhile(() => !ctx.signal.aborted),
+      take(ctx.maxRefreshCount + 1),
+      concatMap(() =>
+        this.#fetchPlaylist(ctx.baseUrl, ctx.headers, ctx.signal)
+      ),
+      scan((state, playlist) => {
+        const segmentUrls = this.#parseSegments(playlist, ctx.baseUrl);
+        const pending = segmentUrls.filter((url) => !state.fetched.has(url));
+        const fetched = new Set(state.fetched);
+        pending.forEach((url) => fetched.add(url));
+        return { playlist, fetched, pending };
+      }, initialState),
+      takeWhile((state) => !state.playlist?.isEndlist, true),
+      concatMap((state) =>
+        from(state.pending).pipe(
+          concatMap((url) => this.#fetchSegment(url, ctx.headers, ctx.signal)),
+        )
+      ),
+    );
   }
 
   async #fetchPlaylist(
@@ -161,29 +159,20 @@ export class HlsSource implements Source<HlsSourceOptions> {
     }
     return new Uint8Array(await response.arrayBuffer());
   }
-
-  #delay(ms: number, signal: AbortSignal): Promise<void> {
-    return new Promise((resolve, reject) => {
-      if (signal.aborted) {
-        reject(signal.reason);
-        return;
-      }
-      const timer = setTimeout(resolve, ms);
-      signal.addEventListener("abort", () => {
-        clearTimeout(timer);
-        reject(signal.reason);
-      });
-    });
-  }
 }
 
-interface FetchSegmentBytesContext {
+interface BytesObservableContext {
   baseUrl: URL;
   headers: Record<string, string> | undefined;
   refreshIntervalMs: number;
   maxRefreshCount: number;
   signal: AbortSignal;
-  fetchedSegments: Set<string>;
+}
+
+interface PollState {
+  playlist: ParsedPlaylist | null;
+  fetched: Set<string>;
+  pending: string[];
 }
 
 interface ParsedPlaylist {

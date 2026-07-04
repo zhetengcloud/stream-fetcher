@@ -10,19 +10,23 @@ conventions change.
   `Resolver`), not concrete implementations.
 - **Web Streams as public API**: `Source` returns `ReadableStream`, `Sink`
   accepts `WritableStream`. Portable and runtime-agnostic.
-- **RxJS internally** (optional): used where it helps — polling, retry/backoff,
-  fan-out — but hidden behind the public interfaces. Users are not required to
-  depend on RxJS.
+- **RxJS as the standard reactive interface**: use RxJS `Observable` for all
+  async/reactive flows, including public APIs and internal implementations.
+  Convert to Web Streams at the boundary when a portable byte-stream interface
+  is required.
 - **Runtime-agnostic core**: no Deno-specific APIs in core. Runtime adapters
   provide file-system access.
-- **No external runtime deps in core** unless strictly necessary.
+- **Minimal external runtime deps in core**: only widely-adopted, portable
+  libraries (e.g., RxJS) may be core dependencies; avoid platform-specific or
+  niche packages.
 - **Tests** cover each package independently; a broken platform resolver must
   not block core CI.
 
 ## Dependency Policy
 
 - Prefer npm packages over JSR-specific modules to avoid vendor lock-in to Deno.
-- Keep core free of external runtime dependencies unless strictly necessary.
+- RxJS is a core runtime dependency; use it as the standard reactive interface
+  for both public APIs and internal flows.
 - Pin dependency versions in `deno.json` import maps.
 
 ## Resolver Conventions
