@@ -1,4 +1,4 @@
-import { Observable } from "rxjs";
+import { from, Observable, of, switchMap } from "rxjs";
 import type { Source } from "@stream-fetcher/core/types";
 
 /** Options for the generic HTTP(S) source. */
@@ -13,51 +13,50 @@ export class HttpSource implements Source<HttpSourceOptions> {
   readonly name = "http";
 
   open(options: HttpSourceOptions): Observable<Uint8Array> {
-    return new Observable<Uint8Array>((subscriber) => {
-      const controller = new AbortController();
-
-      if (options.signal) {
-        if (options.signal.aborted) {
-          controller.abort();
-        } else {
-          options.signal.addEventListener("abort", () => controller.abort());
-        }
-      }
-
+    return from(
       fetch(options.url, {
         headers: options.headers,
-        signal: controller.signal,
-      })
-        .then((response) => {
-          if (!response.ok) {
-            throw new Error(
-              `HTTP ${response.status}: ${response.statusText}`,
-            );
-          }
-          if (!response.body) {
-            throw new Error("Response body is null");
-          }
-
-          const reader = response.body.getReader();
-
-          const pump = (): Promise<void> =>
-            reader.read().then((result) => {
-              if (subscriber.closed) return;
-              if (result.done) {
-                subscriber.complete();
-                return;
-              }
-              subscriber.next(result.value);
-              return pump();
-            });
-
-          return pump().catch((err) => subscriber.error(err));
-        })
-        .catch((err) => subscriber.error(err));
-
-      return () => {
-        controller.abort();
-      };
-    });
+        signal: options.signal,
+      }),
+    ).pipe(
+      switchMap((response) => body$(response)),
+      switchMap((reader) => chunks$(reader)),
+    );
   }
+}
+
+function body$(
+  response: Response,
+): Observable<ReadableStreamDefaultReader<Uint8Array>> {
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+  if (!response.body) {
+    throw new Error("Response body is null");
+  }
+  return of(response.body.getReader());
+}
+
+function chunks$(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+): Observable<Uint8Array> {
+  return new Observable<Uint8Array>((subscriber) => {
+    const read = async () => {
+      try {
+        while (!subscriber.closed) {
+          const result = await reader.read();
+          if (result.done) {
+            subscriber.complete();
+            return;
+          }
+          subscriber.next(result.value);
+        }
+      } catch (err) {
+        subscriber.error(err);
+      }
+    };
+
+    read();
+    return () => reader.releaseLock();
+  });
 }
