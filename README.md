@@ -39,7 +39,8 @@ example an `.flv` endpoint for FLV, or an `.m3u8` playlist for HLS — and
 attaching the headers (referer, user-agent, cookies) the CDN expects.
 
 `HttpSource` is the generic implementation that fetches that URL and exposes its
-body as a byte stream.
+body as a byte stream. `HlsSource` fetches an `.m3u8` playlist, parses out the
+segment URLs, and emits the concatenated bytes of each segment in order.
 
 `record()` then:
 
@@ -54,6 +55,27 @@ body as a byte stream.
 The bytes flowing through are the platform's native live stream bytes (FLV or
 HLS transport-stream segments). The library is a pipe, not a media parser or
 demuxer.
+
+### FLV vs HLS
+
+Both protocols are resolved into a single byte stream:
+
+- **FLV**: the platform returns one long-lived `.flv` URL. `HttpSource` opens it
+  and emits chunks as they arrive. `record()` writes those chunks straight into
+  the sink, so a file sink produces one continuous `.flv` file.
+
+- **HLS**: the platform returns an `.m3u8` playlist. `HlsSource` repeatedly
+  refreshes the playlist (for live streams), fetches each new `.ts` segment, and
+  emits their bytes in playlist order. `record()` sees the same
+  `Observable<Uint8Array>` as FLV, so a file sink also produces one continuous
+  file — but the bytes are MPEG-TS transport-stream segments concatenated
+  back-to-back, not a standalone `.mp4`.
+
+Because the bytes are the platform's native container, saving them directly
+usually means saving `.flv` or `.ts` files. If downstream tools need `.mp4`,
+remux them in a separate step (e.g. with FFmpeg) after (or while) fetching. The
+library intentionally stays out of video decoding/remuxing so it can remain
+runtime-agnostic and small.
 
 ### Usage
 
@@ -87,6 +109,38 @@ record({ source, sink, signal: controller.signal }).subscribe({
   error: (err) => console.error(err),
 });
 controller.abort(); // stops recording
+```
+
+### Saving to files
+
+Use `FileSink` with the Deno file-system adapter to write the raw stream to a
+file. Choose the extension to match the source format:
+
+```ts
+import { FileSink } from "@stream-fetcher/core";
+import { createDenoFileSystem } from "@stream-fetcher/core/adapters/deno";
+
+const fs = createDenoFileSystem();
+
+record({
+  source,
+  sink: new FileSink(),
+  sinkOptions: { path: "./stream.flv", fs }, // or .ts for HLS
+}).subscribe();
+```
+
+For HLS this writes a single concatenated `.ts` file, not an `.mp4`. Remux to
+`.mp4` afterwards if needed:
+
+```sh
+ffmpeg -i stream.ts -c copy stream.mp4
+```
+
+If the live stream had encoder resets or timestamp discontinuities, FFmpeg may
+need generated timestamps:
+
+```sh
+ffmpeg -fflags +genpts -i stream.ts -c copy stream.mp4
 ```
 
 ### Why only one sink?
