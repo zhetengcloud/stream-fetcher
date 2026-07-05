@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { FileSink, record } from "@stream-fetcher/core";
-import type { FileSystem, Source } from "@stream-fetcher/core";
+import type { FileSystem } from "@stream-fetcher/core";
 import type { ProgressMetrics } from "@stream-fetcher/core/recorder";
 import {
   ignoreElements,
@@ -50,18 +50,13 @@ function createInMemoryFs(): {
   return { fs, files };
 }
 
-function arraySource(chunks: Uint8Array[]): Source<undefined> {
-  return {
-    name: "array",
-    open() {
-      return new Observable<Uint8Array>((subscriber) => {
-        for (const chunk of chunks) {
-          subscriber.next(chunk);
-        }
-        subscriber.complete();
-      });
-    },
-  };
+function byteStream$(chunks: Uint8Array[]): Observable<Uint8Array> {
+  return new Observable<Uint8Array>((subscriber) => {
+    for (const chunk of chunks) {
+      subscriber.next(chunk);
+    }
+    subscriber.complete();
+  });
 }
 
 Deno.test("record copies source bytes to a single file sink", async () => {
@@ -72,11 +67,11 @@ Deno.test("record copies source bytes to a single file sink", async () => {
   ];
 
   await lastValueFrom(
-    record({
-      source: arraySource(chunks),
-      sink: new FileSink(),
-      sinkOptions: { path: "/tmp/test.bin", fs },
-    }).pipe(ignoreElements()),
+    record(
+      byteStream$(chunks),
+      new FileSink(),
+      { path: "/tmp/test.bin", fs },
+    ).pipe(ignoreElements()),
     { defaultValue: undefined },
   );
 
@@ -95,23 +90,18 @@ Deno.test("record emits progress metrics and completes", async () => {
 
   const progressEvents: ProgressMetrics[] = [];
 
-  const source: Source<undefined> = {
-    name: "slow-array",
-    open() {
-      return timer(0, 100).pipe(
-        take(chunks.length),
-        map((i) => chunks[i]),
-      );
-    },
-  };
+  const source$ = timer(0, 100).pipe(
+    take(chunks.length),
+    map((i) => chunks[i]),
+  );
 
   await lastValueFrom(
-    record({
-      source,
-      sink: new FileSink(),
-      sinkOptions: { path: "/tmp/progress.bin", fs },
-      progressIntervalMs: 50,
-    }).pipe(tap((metrics) => progressEvents.push(metrics))),
+    record(
+      source$,
+      new FileSink(),
+      { path: "/tmp/progress.bin", fs },
+      { progressIntervalMs: 50 },
+    ).pipe(tap((metrics) => progressEvents.push(metrics))),
     { defaultValue: undefined },
   );
 
@@ -130,25 +120,20 @@ Deno.test("record stops early when aborted", async () => {
     chunks.push(new TextEncoder().encode(`chunk-${i}\n`));
   }
 
-  const source: Source<undefined> = {
-    name: "slow-array",
-    open() {
-      return interval(50).pipe(
-        take(chunks.length),
-        map((i) => chunks[i]),
-      );
-    },
-  };
+  const source$ = interval(50).pipe(
+    take(chunks.length),
+    map((i) => chunks[i]),
+  );
 
   setTimeout(() => controller.abort(), 75);
 
   await lastValueFrom(
-    record({
-      source,
-      sink: new FileSink(),
-      sinkOptions: { path: "/tmp/aborted.bin", fs },
-      signal: controller.signal,
-    }).pipe(ignoreElements()),
+    record(
+      source$,
+      new FileSink(),
+      { path: "/tmp/aborted.bin", fs },
+      { signal: controller.signal },
+    ).pipe(ignoreElements()),
     { defaultValue: undefined },
   );
 
@@ -160,22 +145,17 @@ Deno.test("record stops early on unsubscribe", async () => {
   const { fs } = createInMemoryFs();
   let chunkCount = 0;
 
-  const source: Source<undefined> = {
-    name: "counting-array",
-    open() {
-      return interval(50).pipe(
-        take(100),
-        tap(() => chunkCount++),
-        map((i) => new TextEncoder().encode(`chunk-${i}\n`)),
-      );
-    },
-  };
+  const source$ = interval(50).pipe(
+    take(100),
+    tap(() => chunkCount++),
+    map((i) => new TextEncoder().encode(`chunk-${i}\n`)),
+  );
 
-  const subscription = record({
-    source,
-    sink: new FileSink(),
-    sinkOptions: { path: "/tmp/unsubscribed.bin", fs },
-  }).subscribe();
+  const subscription = record(
+    source$,
+    new FileSink(),
+    { path: "/tmp/unsubscribed.bin", fs },
+  ).subscribe();
 
   await new Promise((resolve) => setTimeout(resolve, 75));
   const countAtUnsubscribe = chunkCount;

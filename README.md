@@ -82,11 +82,12 @@ runtime-agnostic and small.
 ```ts
 import { record } from "@stream-fetcher/core";
 
-const subscription = record({
-  source,
-  sink,
-  progressIntervalMs: 1000,
-}).subscribe({
+const subscription = record(
+  source$, // Observable<Uint8Array>
+  sink, // Sink
+  sinkOptions, // sink-specific options
+  { progressIntervalMs: 1000 },
+).subscribe({
   next: (metrics) => {
     console.log(
       `${metrics.bytes} bytes, ${metrics.bitrateKbps.toFixed(1)} kbps`,
@@ -104,7 +105,7 @@ You can also pass an `AbortSignal` to stop the recording externally:
 
 ```ts
 const controller = new AbortController();
-record({ source, sink, signal: controller.signal }).subscribe({
+record(source$, sink, sinkOptions, { signal: controller.signal }).subscribe({
   next: (metrics) => console.log(metrics),
   error: (err) => console.error(err),
 });
@@ -122,11 +123,11 @@ import { createDenoFileSystem } from "@stream-fetcher/core/adapters/deno";
 
 const fs = createDenoFileSystem();
 
-record({
-  source,
-  sink: new FileSink(),
-  sinkOptions: { path: "./stream.flv", fs }, // or .ts for HLS
-}).subscribe();
+record(
+  source$, // e.g. from HttpSource.open() or HlsSource.open()
+  new FileSink(), // sink
+  { path: "./stream.flv", fs }, // sink options
+).subscribe();
 ```
 
 For HLS this writes a single concatenated `.ts` file, not an `.mp4`. Remux to

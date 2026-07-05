@@ -47,17 +47,6 @@ export interface ResolvedStream<S = unknown> {
   source: Source<S>;
 }
 
-/** Configuration for a recording session. */
-export interface RecorderOptions<S, K> {
-  source: Source<S>;
-  sourceOptions?: S;
-  sink: Sink<K>;
-  sinkOptions?: K;
-  signal?: AbortSignal;
-  /** Progress emit interval in milliseconds. Defaults to 1000. */
-  progressIntervalMs?: number;
-}
-
 /** Converts a platform URL (e.g. Bilibili room) into a ResolvedStream. */
 export interface Resolver<T = unknown> {
   readonly platform: string;
