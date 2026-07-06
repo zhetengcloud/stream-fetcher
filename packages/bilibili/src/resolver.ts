@@ -1,12 +1,7 @@
 import type { ResolvedStream, Resolver } from "@stream-fetcher/core/types";
 import { HlsSource } from "@stream-fetcher/core/sources/hls";
 import { HttpSource } from "@stream-fetcher/core/sources/http";
-import { messages } from "./messages.ts";
-
-const BILIBILI_API_BASE = "https://api.live.bilibili.com";
-const BILIBILI_REFERER = "https://live.bilibili.com";
-const BILIBILI_USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+import { messages } from "@stream-fetcher/bilibili/messages";
 
 export enum BilibiliProtocol {
   Flv = "flv",
@@ -37,7 +32,7 @@ interface PlayUrlResponse {
 
 /** Resolves Bilibili live room URLs into a ResolvedStream. */
 export class BilibiliResolver implements Resolver<BilibiliResolverOptions> {
-  readonly platform = "bilibili";
+  readonly platform = messages.platform;
   readonly #roomPattern =
     /(?:https?:\/\/)?(?:www\.|m\.|live\.)?bilibili\.com\/(?:blanc\/|h5\/)?(\d+)/;
 
@@ -50,7 +45,7 @@ export class BilibiliResolver implements Resolver<BilibiliResolverOptions> {
     options: BilibiliResolverOptions = {},
   ): Promise<ResolvedStream> {
     const match = this.#roomPattern.exec(url);
-    if (!match) throw new Error(messages.errors.invalidUrl(url));
+    if (!match) throw new Error(`${messages.errors.invalidUrl}: ${url}`);
     const roomId = match[1];
 
     const {
@@ -62,8 +57,8 @@ export class BilibiliResolver implements Resolver<BilibiliResolverOptions> {
 
     const isHls = protocol === BilibiliProtocol.Hls;
     const headers = {
-      "user-agent": BILIBILI_USER_AGENT,
-      referer: BILIBILI_REFERER,
+      "user-agent": messages.api.userAgent,
+      referer: messages.api.referer,
       ...(cookie ? { cookie } : {}),
     };
 
@@ -93,7 +88,7 @@ export class BilibiliResolver implements Resolver<BilibiliResolverOptions> {
     return {
       metadata,
       source: {
-        name: "bilibili",
+        name: messages.platform,
         open: () => source.open(sourceOptions as never),
       },
     };
@@ -104,31 +99,39 @@ export class BilibiliResolver implements Resolver<BilibiliResolverOptions> {
     qn: number,
     protocol: BilibiliProtocol,
     cookie: string | undefined,
-    apiBase: string | undefined,
+    _apiBase: string | undefined,
   ): Promise<{ streamUrl: string; title?: string }> {
-    const platform = protocol === BilibiliProtocol.Hls ? "hls" : "web";
+    const platform = protocol === BilibiliProtocol.Hls
+      ? messages.api.platforms.hls
+      : messages.api.platforms.web;
     const apiUrl = new URL(
-      "/room/v1/Room/playUrl",
-      (apiBase ?? BILIBILI_API_BASE).replace(/\/$/, "") + "/",
+      messages.api.playUrlEndpoint,
+      (_apiBase ?? messages.api.baseUrl).replace(/\/$/, "") + "/",
     );
     apiUrl.searchParams.set("cid", roomId);
     apiUrl.searchParams.set("qn", String(qn));
     apiUrl.searchParams.set("platform", platform);
 
     const headers: Record<string, string> = {
-      "user-agent": BILIBILI_USER_AGENT,
-      referer: BILIBILI_REFERER,
+      "user-agent": messages.api.userAgent,
+      referer: messages.api.referer,
     };
     if (cookie) headers.cookie = cookie;
 
     const response = await fetch(apiUrl, { headers });
     if (!response.ok) {
-      throw new Error(messages.errors.playUrlRequestFailed(response.status));
+      throw new Error(
+        `${messages.errors.playUrlRequestFailed}: ${response.status}`,
+      );
     }
 
     const data = (await response.json()) as PlayUrlResponse;
     if (data.code !== 0) {
-      throw new Error(messages.errors.playUrlError(data.message, data.code));
+      throw new Error(
+        `${messages.errors.playUrlError}: ${
+          data.message ?? `code ${data.code}`
+        }`,
+      );
     }
 
     const urls = data.data?.durl;

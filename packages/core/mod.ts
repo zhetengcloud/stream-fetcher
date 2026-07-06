@@ -1,4 +1,5 @@
 export * from "./src/types.ts";
+export * from "./src/messages.ts";
 export * from "./src/recorder.ts";
 export * from "./src/sources/http.ts";
 export * from "./src/sources/hls.ts";

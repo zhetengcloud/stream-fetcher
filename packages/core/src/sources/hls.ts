@@ -1,6 +1,7 @@
 import { Chunk, Effect, Option, Stream } from "effect";
 import type { EffectSource, Source } from "@stream-fetcher/core/types";
 import { toSource } from "@stream-fetcher/core/adapters/effect";
+import { messages } from "@stream-fetcher/core/messages";
 
 /** Options for the HLS source. */
 export interface HlsSourceOptions {
@@ -34,7 +35,8 @@ export class HlsEffectSource implements EffectSource<HlsSourceOptions> {
     const baseUrl = new URL(options.playlistUrl);
     const headers = options.headers;
     const signal = options.signal ?? new AbortController().signal;
-    const refreshIntervalMs = options.refreshIntervalMs ?? 2000;
+    const refreshIntervalMs = options.refreshIntervalMs ??
+      messages.defaults.hlsRefreshIntervalMs;
     const maxRefreshCount = options.maxRefreshCount ?? Infinity;
 
     const initialState: PollState = {
@@ -126,7 +128,9 @@ function fetchPlaylist(
     try: async () => {
       const response = await fetch(url, { headers, signal });
       if (!response.ok) {
-        throw new Error(`HLS playlist request failed: ${response.status}`);
+        throw new Error(
+          `${messages.errors.hlsPlaylistRequestFailed}: ${response.status}`,
+        );
       }
       return parsePlaylist(await response.text());
     },
@@ -173,7 +177,9 @@ function fetchSegment(
     try: async () => {
       const response = await fetch(url, { headers, signal });
       if (!response.ok) {
-        throw new Error(`HLS segment request failed: ${response.status}`);
+        throw new Error(
+          `${messages.errors.hlsSegmentRequestFailed}: ${response.status}`,
+        );
       }
       return new Uint8Array(await response.arrayBuffer());
     },

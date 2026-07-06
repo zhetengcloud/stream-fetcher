@@ -1,5 +1,8 @@
 import md5 from "md5";
 import type { StreamInfo } from "./extract_room_profile.ts";
+import { messages } from "@stream-fetcher/huya/messages";
+
+const EXCLUDED_CDN_PATTERN = /^(HY|HUYA|HYZJ)$/i;
 
 export interface StreamUrl {
   cdn: string;
@@ -40,13 +43,14 @@ export function buildStreamUrls(
     }
 
     const query = buildAntiCode(streamName, antiCode);
-    const url = `${baseUrl}/${streamName}.${suffix}?${query}&codec=264`;
+    const url =
+      `${baseUrl}/${streamName}.${suffix}?${query}&codec=${messages.stream.codec}`;
     streams.push({ cdn, priority, url });
   }
 
   streams.sort((a, b) => b.priority - a.priority);
 
-  return streams.filter((s) => !/^(HY|HUYA|HYZJ)$/i.test(s.cdn));
+  return streams.filter((s) => !EXCLUDED_CDN_PATTERN.test(s.cdn));
 }
 
 function buildAntiCode(streamName: string, antiCode: string): string {
@@ -56,8 +60,9 @@ function buildAntiCode(streamName: string, antiCode: string): string {
     return antiCode;
   }
 
-  const ctype = params.get("ctype") ?? "huya_live";
-  const platformId = params.get("t") ?? "100";
+  const ctype = params.get("ctype") ?? messages.stream.antiCode.ctypeDefault;
+  const platformId = params.get("t") ??
+    messages.stream.antiCode.platformIdDefault;
   const uid = generateRandomUid();
   const nowSecs = Math.floor(Date.now() / 1000);
   const seqId = uid + BigInt(Date.now());
@@ -76,12 +81,12 @@ function buildAntiCode(streamName: string, antiCode: string): string {
   const secretStr =
     `${secretPrefix}_${convertUid}_${streamName}_${secretHash}_${wsTime}`;
   const wsSecret = md5Hex(secretStr);
-  const fs = params.get("fs") ?? "bgct";
+  const fs = params.get("fs") ?? messages.stream.antiCode.fsDefault;
   const encodedFm = encodeURIComponent(params.get("fm") ?? "");
 
   return (
     `wsSecret=${wsSecret}&wsTime=${wsTime}&seqid=${seqId}&ctype=${ctype}` +
-    `&ver=1&fs=${fs}&fm=${encodedFm}&t=${platformId}&u=${convertUid}`
+    `&ver=${messages.stream.antiCode.ver}&fs=${fs}&fm=${encodedFm}&t=${platformId}&u=${convertUid}`
   );
 }
 

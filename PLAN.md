@@ -140,5 +140,6 @@ The library is designed for microservices / Kubernetes, not an end-user CLI.
 | M2 | `S3Sink`, graceful abort and single-sink `record()`    | ✅ Done |
 | M3 | Workspace migration + Bilibili + Huya resolvers        | ✅ Done |
 | M4 | README + Effect integration + adapter helpers          | ✅ Done |
+| M5 | Extract platform strings to dedicated `messages.ts`    | ✅ Done |
 
 **On hold:** YouTube / Twitch resolvers.

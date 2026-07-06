@@ -1,5 +1,6 @@
 import { Effect, Stream } from "effect";
 import type { EffectSource, Source } from "@stream-fetcher/core/types";
+import { messages } from "@stream-fetcher/core/messages";
 
 /** Options for the generic HTTP(S) source. */
 export interface HttpSourceOptions {
@@ -18,10 +19,12 @@ export class HttpSource implements Source<HttpSourceOptions> {
       signal: options.signal,
     });
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      throw new Error(
+        `${messages.errors.httpRequestFailed}: ${response.status} ${response.statusText}`,
+      );
     }
     if (!response.body) {
-      throw new Error("Response body is null");
+      throw new Error(messages.errors.responseBodyIsNull);
     }
     return response.body;
   }
@@ -40,10 +43,12 @@ export class HttpEffectSource implements EffectSource<HttpSourceOptions> {
             signal: options.signal,
           });
           if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            throw new Error(
+              `${messages.errors.httpRequestFailed}: ${response.status} ${response.statusText}`,
+            );
           }
           if (!response.body) {
-            throw new Error("Response body is null");
+            throw new Error(messages.errors.responseBodyIsNull);
           }
           return response.body as ReadableStream<Uint8Array>;
         },

@@ -1,6 +1,4 @@
-const HUYA_WEB_BASE_URL = "https://www.huya.com";
-const HUYA_USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+import { messages } from "@stream-fetcher/huya/messages";
 
 export interface FetchRoomPageOptions {
   referer: string;
@@ -12,17 +10,17 @@ export interface FetchRoomPageOptions {
 export async function fetchRoomPage(
   options: FetchRoomPageOptions,
 ): Promise<string> {
-  const base = (options.webBase ?? HUYA_WEB_BASE_URL).replace(/\/$/, "");
+  const base = (options.webBase ?? messages.api.webBaseUrl).replace(/\/$/, "");
   const response = await fetch(`${base}/${options.roomId}`, {
     headers: {
       referer: options.referer,
-      "user-agent": HUYA_USER_AGENT,
+      "user-agent": messages.api.userAgent,
     },
   });
 
   if (!response.ok) {
     throw new Error(
-      `Huya room page request failed: ${response.status}`,
+      `${messages.errors.roomPageRequestFailed}: ${response.status}`,
     );
   }
 

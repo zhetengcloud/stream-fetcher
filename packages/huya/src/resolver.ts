@@ -1,7 +1,7 @@
 import type { ResolvedStream, Resolver } from "@stream-fetcher/core/types";
 import { HlsSource } from "@stream-fetcher/core/sources/hls";
 import { HttpSource } from "@stream-fetcher/core/sources/http";
-import { messages } from "./messages.ts";
+import { messages } from "@stream-fetcher/huya/messages";
 import { fetchRoomPage } from "./fetch_room_page.ts";
 import { extractRoomProfile } from "./extract_room_profile.ts";
 import { buildStreamUrls } from "./build_stream_urls.ts";
@@ -26,7 +26,7 @@ export interface HuyaResolverOptions {
 
 /** Resolves Huya live room URLs into a ResolvedStream. */
 export class HuyaResolver implements Resolver<HuyaResolverOptions> {
-  readonly platform = "huya";
+  readonly platform = messages.platform;
   readonly #roomPattern = /(?:https?:\/\/)?(?:www\.|m\.)?huya\.com\/([\w-]+)/;
 
   canHandle(url: string): boolean {
@@ -38,7 +38,7 @@ export class HuyaResolver implements Resolver<HuyaResolverOptions> {
     options: HuyaResolverOptions = {},
   ): Promise<ResolvedStream> {
     const match = this.#roomPattern.exec(url);
-    if (!match) throw new Error(messages.errors.invalidUrl(url));
+    if (!match) throw new Error(`${messages.errors.invalidUrl}: ${url}`);
     const roomId = match[1];
 
     const {
@@ -50,8 +50,7 @@ export class HuyaResolver implements Resolver<HuyaResolverOptions> {
 
     const isHls = protocol === HuyaProtocol.Hls;
     const headers = {
-      "user-agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "user-agent": messages.api.userAgent,
       referer: url,
     };
 
@@ -111,7 +110,7 @@ export class HuyaResolver implements Resolver<HuyaResolverOptions> {
     return {
       metadata,
       source: {
-        name: "huya",
+        name: messages.platform,
         open: () => source.open(sourceOptions as never),
       },
     };

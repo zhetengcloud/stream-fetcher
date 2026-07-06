@@ -1,5 +1,7 @@
 import type { BitrateInfo } from "./extract_room_profile.ts";
 
+import { messages } from "@stream-fetcher/huya/messages";
+
 export interface ApplyRatioOptions {
   url: string;
   bitrateInfo: BitrateInfo[];
@@ -41,7 +43,7 @@ export function selectStreamUrl(options: SelectStreamUrlOptions): string {
     : undefined;
   const result = selected ?? streamUrls[0];
   if (!result) {
-    throw new Error("No usable Huya CDN stream URL found");
+    throw new Error(messages.errors.noUsableCdn);
   }
   return result.url;
 }

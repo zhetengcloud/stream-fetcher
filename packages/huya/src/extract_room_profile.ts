@@ -1,3 +1,5 @@
+import { messages } from "@stream-fetcher/huya/messages";
+
 export interface StreamInfo {
   sStreamName: string;
   sCdnType: string;
@@ -22,11 +24,15 @@ export interface RoomProfile {
   streamInfo: StreamInfo[];
 }
 
+const ROOM_DATA_PATTERN = /var\s+TT_ROOM_DATA\s*=\s*/;
+const ROOM_DATA_END = ";";
+const STREAM_OBJECT_MARKER = "stream: ";
+
 export function extractRoomProfile(page: string): RoomProfile | null {
   const roomData = extractJsonAfter(
     page,
-    /var\s+TT_ROOM_DATA\s*=\s*/,
-    ";",
+    ROOM_DATA_PATTERN,
+    ROOM_DATA_END,
   );
   const roomState = typeof roomData.state === "string" ? roomData.state : "";
 
@@ -42,12 +48,12 @@ export function extractRoomProfile(page: string): RoomProfile | null {
   const data = Array.isArray(stream.data) ? stream.data : [];
   const first = data[0];
   if (!first || typeof first !== "object") {
-    throw new Error("Huya stream data is empty");
+    throw new Error(messages.errors.streamDataEmpty);
   }
 
   const gameLiveInfo = first.gameLiveInfo;
   if (!gameLiveInfo || typeof gameLiveInfo !== "object") {
-    throw new Error("Huya live info is empty");
+    throw new Error(messages.errors.liveInfoEmpty);
   }
 
   const streamInfo = Array.isArray(first.gameStreamInfoList)
@@ -79,37 +85,41 @@ function extractJsonAfter(
 ): Record<string, unknown> {
   const match = pattern.exec(page);
   if (!match) {
-    throw new Error("Huya room data not found");
+    throw new Error(messages.errors.roomDataNotFound);
   }
   const start = match.index + match[0].length;
   const endIdx = page.indexOf(end, start);
   if (endIdx === -1) {
-    throw new Error("Huya room data is incomplete");
+    throw new Error(messages.errors.roomDataIncomplete);
   }
   const jsonText = page.slice(start, endIdx).trim();
   try {
     return JSON.parse(jsonText) as Record<string, unknown>;
   } catch (err) {
-    throw new Error(`Failed to parse Huya room data: ${err}`);
+    throw new Error(
+      `${messages.errors.roomDataParseFailed}: ${err}`,
+    );
   }
 }
 
 function extractStreamJson(page: string): Record<string, unknown> {
-  const marker = "stream: ";
+  const marker = STREAM_OBJECT_MARKER;
   const start = page.indexOf(marker);
   if (start === -1) {
-    throw new Error("Huya stream data not found");
+    throw new Error(messages.errors.streamDataNotFound);
   }
   const valueStart = start + marker.length;
   const end = findJsonValueEnd(page, valueStart);
   if (end === -1) {
-    throw new Error("Huya stream data is incomplete");
+    throw new Error(messages.errors.streamDataIncomplete);
   }
   const jsonText = page.slice(valueStart, end).trim();
   try {
     return JSON.parse(jsonText) as Record<string, unknown>;
   } catch (err) {
-    throw new Error(`Failed to parse Huya stream data: ${err}`);
+    throw new Error(
+      `${messages.errors.streamDataParseFailed}: ${err}`,
+    );
   }
 }
 

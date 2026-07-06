@@ -2,6 +2,7 @@ import { Effect, Ref, Stream } from "effect";
 import type { EffectSink, Sink } from "@stream-fetcher/core/types";
 import { signRequest } from "@stream-fetcher/core/utils/s3_sign";
 import { toSink } from "@stream-fetcher/core/adapters/effect";
+import { messages } from "@stream-fetcher/core/messages";
 
 export interface S3SinkOptions {
   /** S3 endpoint, e.g. https://s3.amazonaws.com or https://oss-cn-hangzhou.aliyuncs.com */
@@ -78,9 +79,9 @@ class S3MultipartClient {
       accessKeyId: options.accessKeyId,
       secretAccessKey: options.secretAccessKey,
       sessionToken: options.sessionToken ?? "",
-      region: options.region ?? "us-east-1",
-      service: options.service ?? "s3",
-      partSize: options.partSize ?? 8 * 1024 * 1024,
+      region: options.region ?? messages.defaults.s3Region,
+      service: options.service ?? messages.defaults.s3Service,
+      partSize: options.partSize ?? messages.defaults.s3PartSizeBytes,
       signal: options.signal ?? new AbortController().signal,
     };
   }
@@ -196,14 +197,18 @@ class S3MultipartClient {
       if (!response.ok) {
         const text = yield* Effect.tryPromise(() => response.text());
         return yield* Effect.fail(
-          new Error(`createMultipartUpload failed: ${response.status} ${text}`),
+          new Error(
+            `${messages.errors.s3CreateMultipartUploadFailed}: ${response.status} ${text}`,
+          ),
         );
       }
 
       const xml = yield* Effect.tryPromise(() => response.text());
       const match = xml.match(/<UploadId>(.+?)<\/UploadId>/);
       if (!match) {
-        return yield* Effect.fail(new Error("UploadId not found in response"));
+        return yield* Effect.fail(
+          new Error(messages.errors.s3UploadIdNotFound),
+        );
       }
       return match[1];
     });
@@ -249,14 +254,16 @@ class S3MultipartClient {
       if (!response.ok) {
         const text = yield* Effect.tryPromise(() => response.text());
         return yield* Effect.fail(
-          new Error(`uploadPart failed: ${response.status} ${text}`),
+          new Error(
+            `${messages.errors.s3UploadPartFailed}: ${response.status} ${text}`,
+          ),
         );
       }
 
       const etag = response.headers.get("ETag");
       if (!etag) {
         return yield* Effect.fail(
-          new Error("ETag missing from uploadPart response"),
+          new Error(messages.errors.s3EtagMissing),
         );
       }
       return etag;
@@ -313,7 +320,7 @@ class S3MultipartClient {
         const text = yield* Effect.tryPromise(() => response.text());
         return yield* Effect.fail(
           new Error(
-            `completeMultipartUpload failed: ${response.status} ${text}`,
+            `${messages.errors.s3CompleteMultipartUploadFailed}: ${response.status} ${text}`,
           ),
         );
       }
