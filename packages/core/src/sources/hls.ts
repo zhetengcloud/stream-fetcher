@@ -141,17 +141,10 @@ function fetchPlaylist(
 
 function parsePlaylist(text: string): ParsedPlaylist {
   const lines = text.split(/\r?\n/);
-  let isEndlist = false;
-  const segmentLines: string[] = [];
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed === "#EXT-X-ENDLIST") {
-      isEndlist = true;
-    } else if (trimmed && !trimmed.startsWith("#")) {
-      segmentLines.push(trimmed);
-    }
-  }
+  const isEndlist = lines.some((line) => line.trim() === "#EXT-X-ENDLIST");
+  const segmentLines = lines
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("#"));
 
   return { isEndlist, segmentLines };
 }
