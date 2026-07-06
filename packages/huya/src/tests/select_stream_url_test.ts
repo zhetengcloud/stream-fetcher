@@ -1,32 +1,33 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
+import { Effect } from "effect";
 import { applyRatio, selectStreamUrl } from "@stream-fetcher/huya/internal";
 
-Deno.test("selectStreamUrl picks highest priority CDN by default", () => {
-  const url = selectStreamUrl({
+Deno.test("selectStreamUrl picks highest priority CDN by default", async () => {
+  const url = await Effect.runPromise(selectStreamUrl({
     streamUrls: [
       { cdn: "TX", url: "https://tx.example.com/stream" },
       { cdn: "HW", url: "https://hw.example.com/stream" },
     ],
-  });
+  }));
 
   assertEquals(url, "https://tx.example.com/stream");
 });
 
-Deno.test("selectStreamUrl prefers selected CDN", () => {
-  const url = selectStreamUrl({
+Deno.test("selectStreamUrl prefers selected CDN", async () => {
+  const url = await Effect.runPromise(selectStreamUrl({
     streamUrls: [
       { cdn: "TX", url: "https://tx.example.com/stream" },
       { cdn: "HW", url: "https://hw.example.com/stream" },
     ],
     preferredCdn: "HW",
-  });
+  }));
 
   assertEquals(url, "https://hw.example.com/stream");
 });
 
-Deno.test("selectStreamUrl throws when no URLs available", () => {
-  assertThrows(
-    () => selectStreamUrl({ streamUrls: [] }),
+Deno.test("selectStreamUrl throws when no URLs available", async () => {
+  await assertRejects(
+    () => Effect.runPromise(selectStreamUrl({ streamUrls: [] })),
     Error,
     "No usable Huya CDN stream URL found",
   );

@@ -1,4 +1,5 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
+import { Effect } from "effect";
 import { extractRoomProfile } from "@stream-fetcher/huya/internal";
 
 function makePage(options: {
@@ -42,8 +43,8 @@ var hyPlayerConfig = {
 `;
 }
 
-Deno.test("extractRoomProfile parses live room page", () => {
-  const profile = extractRoomProfile(makePage());
+Deno.test("extractRoomProfile parses live room page", async () => {
+  const profile = await Effect.runPromise(extractRoomProfile(makePage()));
   assertEquals(profile?.title, "Live Stream");
   assertEquals(profile?.cover, "https://example.com/cover.jpg");
   assertEquals(profile?.maxBitrate, 10000);
@@ -52,72 +53,80 @@ Deno.test("extractRoomProfile parses live room page", () => {
   assertEquals(profile?.streamInfo[0].sCdnType, "TX");
 });
 
-Deno.test("extractRoomProfile returns null for offline room", () => {
-  assertEquals(extractRoomProfile(makePage({ state: "OFF" })), null);
-});
-
-Deno.test("extractRoomProfile returns null when no bitrate info", () => {
+Deno.test("extractRoomProfile returns null for offline room", async () => {
   assertEquals(
-    extractRoomProfile(makePage({ vMultiStreamInfo: "[]" })),
+    await Effect.runPromise(extractRoomProfile(makePage({ state: "OFF" }))),
     null,
   );
 });
 
-Deno.test("extractRoomProfile returns null when no stream info", () => {
+Deno.test("extractRoomProfile returns null when no bitrate info", async () => {
   assertEquals(
-    extractRoomProfile(makePage({ gameStreamInfoList: "[]" })),
+    await Effect.runPromise(
+      extractRoomProfile(makePage({ vMultiStreamInfo: "[]" })),
+    ),
     null,
   );
 });
 
-Deno.test("extractRoomProfile throws when room data is missing", () => {
+Deno.test("extractRoomProfile returns null when no stream info", async () => {
+  assertEquals(
+    await Effect.runPromise(
+      extractRoomProfile(makePage({ gameStreamInfoList: "[]" })),
+    ),
+    null,
+  );
+});
+
+Deno.test("extractRoomProfile throws when room data is missing", async () => {
   const page = makePage().replace("var TT_ROOM_DATA", "var OTHER_DATA");
-  assertThrows(
-    () => extractRoomProfile(page),
+  await assertRejects(
+    () => Effect.runPromise(extractRoomProfile(page)),
     Error,
     "Huya room data not found",
   );
 });
 
-Deno.test("extractRoomProfile throws when stream data is missing", () => {
+Deno.test("extractRoomProfile throws when stream data is missing", async () => {
   const page = makePage()
     .replace(/stream:\s*\{/, "other: {");
-  assertThrows(
-    () => extractRoomProfile(page),
+  await assertRejects(
+    () => Effect.runPromise(extractRoomProfile(page)),
     Error,
     "Huya stream data not found",
   );
 });
 
-Deno.test("extractRoomProfile throws when stream data array is empty", () => {
-  assertThrows(
-    () => extractRoomProfile(makePage({ data: "[]" })),
+Deno.test("extractRoomProfile throws when stream data array is empty", async () => {
+  await assertRejects(
+    () => Effect.runPromise(extractRoomProfile(makePage({ data: "[]" }))),
     Error,
     "Huya stream data is empty",
   );
 });
 
-Deno.test("extractRoomProfile throws when gameLiveInfo is missing", () => {
-  assertThrows(
-    () => extractRoomProfile(makePage({ gameLiveInfo: "null" })),
+Deno.test("extractRoomProfile throws when gameLiveInfo is missing", async () => {
+  await assertRejects(
+    () =>
+      Effect.runPromise(extractRoomProfile(makePage({ gameLiveInfo: "null" }))),
     Error,
     "Huya live info is empty",
   );
 });
 
-Deno.test("extractRoomProfile upgrades http cover to https", () => {
-  const profile = extractRoomProfile(
+Deno.test("extractRoomProfile upgrades http cover to https", async () => {
+  const profile = await Effect.runPromise(extractRoomProfile(
     makePage({ screenshot: "http://example.com/cover.jpg" }),
-  );
+  ));
   assertEquals(profile?.cover, "https://example.com/cover.jpg");
 });
 
-Deno.test("extractRoomProfile handles escaped JSON strings", () => {
-  const profile = extractRoomProfile(
+Deno.test("extractRoomProfile handles escaped JSON strings", async () => {
+  const profile = await Effect.runPromise(extractRoomProfile(
     makePage({
       gameLiveInfo:
         '{"introduction":"\\u56de\\u653e","screenshot":"","bitRate":0}',
     }),
-  );
+  ));
   assertEquals(profile?.title, "回放");
 });

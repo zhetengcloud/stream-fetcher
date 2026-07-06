@@ -9,59 +9,56 @@ export interface HttpSourceOptions {
   signal?: AbortSignal;
 }
 
-/** Fetches a raw HTTP(S) stream and exposes it as a Source. */
-export class HttpSource implements Source<HttpSourceOptions> {
-  readonly name = "http";
-
-  async open(options: HttpSourceOptions): Promise<ReadableStream<Uint8Array>> {
-    const response = await fetch(options.url, {
-      headers: options.headers,
-      signal: options.signal,
-    });
-    if (!response.ok) {
-      throw new Error(
-        `${messages.errors.httpRequestFailed}: ${response.status} ${response.statusText}`,
-      );
-    }
-    if (!response.body) {
-      throw new Error(messages.errors.responseBodyIsNull);
-    }
-    return response.body;
-  }
-}
-
-/** Effect-based HTTP(S) source. */
+/** Fetches a raw HTTP(S) stream and exposes it as an EffectSource. */
 export class HttpEffectSource implements EffectSource<HttpSourceOptions> {
   readonly name = "http";
 
   open(options: HttpSourceOptions): Stream.Stream<Uint8Array, Error, never> {
-    return Stream.fromEffect(
-      Effect.tryPromise<ReadableStream<Uint8Array>, Error>({
-        try: async () => {
-          const response = await fetch(options.url, {
-            headers: options.headers,
-            signal: options.signal,
-          });
-          if (!response.ok) {
-            throw new Error(
-              `${messages.errors.httpRequestFailed}: ${response.status} ${response.statusText}`,
-            );
-          }
-          if (!response.body) {
-            throw new Error(messages.errors.responseBodyIsNull);
-          }
-          return response.body as ReadableStream<Uint8Array>;
-        },
-        catch: (err: unknown) =>
-          err instanceof Error ? err : new Error(String(err)),
-      }),
-    ).pipe(
-      Stream.flatMap((readable: ReadableStream<Uint8Array>) =>
+    return fetchResponse(options).pipe(
+      Stream.flatMap((response) =>
         Stream.fromReadableStream(
-          () => readable,
-          (err: unknown) => err instanceof Error ? err : new Error(String(err)),
+          () => response,
+          (err) => err instanceof Error ? err : new Error(String(err)),
         )
       ),
     );
   }
+}
+
+/** Fetches a raw HTTP(S) stream and exposes it as a Source. */
+export class HttpSource implements Source<HttpSourceOptions> {
+  readonly name = "http";
+  readonly #effectSource = new HttpEffectSource();
+
+  open(options: HttpSourceOptions): Promise<ReadableStream<Uint8Array>> {
+    return Effect.runPromise(
+      Stream.toReadableStreamEffect(this.#effectSource.open(options)),
+    );
+  }
+}
+
+function fetchResponse(
+  options: HttpSourceOptions,
+): Stream.Stream<ReadableStream<Uint8Array>, Error, never> {
+  return Stream.fromEffect(
+    Effect.tryPromise({
+      try: async () => {
+        const response = await fetch(options.url, {
+          headers: options.headers,
+          signal: options.signal,
+        });
+        if (!response.ok) {
+          throw new Error(
+            `${messages.errors.httpRequestFailed}: ${response.status} ${response.statusText}`,
+          );
+        }
+        if (!response.body) {
+          throw new Error(messages.errors.responseBodyIsNull);
+        }
+        return response.body;
+      },
+      catch: (err: unknown) =>
+        err instanceof Error ? err : new Error(String(err)),
+    }),
+  );
 }

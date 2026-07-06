@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import md5 from "md5";
 import type { StreamInfo } from "./extract_room_profile.ts";
 import { messages } from "@stream-fetcher/huya/messages";
@@ -15,79 +16,90 @@ export interface BuildStreamUrlsOptions {
   isHls: boolean;
 }
 
-/** Builds sorted Huya stream URLs from raw stream info. */
+/** Builds sorted Huya stream URLs from raw stream info as an Effect. */
 export function buildStreamUrls(
   options: BuildStreamUrlsOptions,
-): StreamUrl[] {
+): Effect.Effect<StreamUrl[], Error, never> {
   const { streamsInfo, isHls } = options;
   const urlKey = isHls ? "sHlsUrl" : "sFlvUrl";
   const suffixKey = isHls ? "sHlsUrlSuffix" : "sFlvUrlSuffix";
   const antiCodeKey = isHls ? "sHlsAntiCode" : "sFlvAntiCode";
 
-  const streams: StreamUrl[] = [];
+  return Effect.gen(function* () {
+    const streams: StreamUrl[] = [];
 
-  for (const stream of streamsInfo) {
-    const priority = typeof stream.iWebPriorityRate === "number"
-      ? stream.iWebPriorityRate
-      : 0;
-    if (priority < 0) continue;
+    for (const stream of streamsInfo) {
+      const priority = typeof stream.iWebPriorityRate === "number"
+        ? stream.iWebPriorityRate
+        : 0;
+      if (priority < 0) continue;
 
-    const streamName = stream.sStreamName;
-    const cdn = stream.sCdnType;
-    const suffix = stream[suffixKey];
-    const antiCode = stream[antiCodeKey];
-    const baseUrl = stream[urlKey]?.replace(/^http:/, "https:");
+      const streamName = stream.sStreamName;
+      const cdn = stream.sCdnType;
+      const suffix = stream[suffixKey];
+      const antiCode = stream[antiCodeKey];
+      const baseUrl = stream[urlKey]?.replace(/^http:/, "https:");
 
-    if (!streamName || !cdn || !suffix || !antiCode || !baseUrl) {
-      continue;
+      if (!streamName || !cdn || !suffix || !antiCode || !baseUrl) {
+        continue;
+      }
+
+      const query = yield* buildAntiCode(streamName, antiCode);
+      const url =
+        `${baseUrl}/${streamName}.${suffix}?${query}&codec=${messages.stream.codec}`;
+      streams.push({ cdn, priority, url });
     }
 
-    const query = buildAntiCode(streamName, antiCode);
-    const url =
-      `${baseUrl}/${streamName}.${suffix}?${query}&codec=${messages.stream.codec}`;
-    streams.push({ cdn, priority, url });
-  }
+    streams.sort((a, b) => b.priority - a.priority);
 
-  streams.sort((a, b) => b.priority - a.priority);
-
-  return streams.filter((s) => !EXCLUDED_CDN_PATTERN.test(s.cdn));
+    return streams.filter((s) => !EXCLUDED_CDN_PATTERN.test(s.cdn));
+  });
 }
 
-function buildAntiCode(streamName: string, antiCode: string): string {
-  const params = new URLSearchParams(antiCode);
-  const fm = params.get("fm");
-  if (!fm) {
-    return antiCode;
-  }
+function buildAntiCode(
+  streamName: string,
+  antiCode: string,
+): Effect.Effect<string, Error, never> {
+  return Effect.gen(function* () {
+    const params = new URLSearchParams(antiCode);
+    const fm = params.get("fm");
+    if (!fm) {
+      return antiCode;
+    }
 
-  const ctype = params.get("ctype") ?? messages.stream.antiCode.ctypeDefault;
-  const platformId = params.get("t") ??
-    messages.stream.antiCode.platformIdDefault;
-  const uid = generateRandomUid();
-  const nowSecs = Math.floor(Date.now() / 1000);
-  const seqId = uid + BigInt(Date.now());
-  const secretHash = md5Hex(`${seqId}|${ctype}|${platformId}`);
-  const convertUid = rotl64(uid);
+    const ctype = params.get("ctype") ?? messages.stream.antiCode.ctypeDefault;
+    const platformId = params.get("t") ??
+      messages.stream.antiCode.platformIdDefault;
+    const uid = generateRandomUid();
+    const nowSecs = Math.floor(Date.now() / 1000);
+    const seqId = uid + BigInt(Date.now());
+    const secretHash = md5Hex(`${seqId}|${ctype}|${platformId}`);
+    const convertUid = rotl64(uid);
 
-  const decodedFm = decodeUrlComponent(fm);
-  const secretPrefix = base64Decode(decodedFm.split("_")[0] ?? "");
+    const decodedFm = yield* Effect.try({
+      try: () => decodeUrlComponent(fm),
+      catch: (err: unknown) =>
+        new Error(`${messages.errors.antiCodeDecodeFailed}: ${err}`),
+    });
+    const secretPrefix = base64Decode(decodedFm.split("_")[0] ?? "");
 
-  let wsTime = params.get("wsTime") ?? "";
-  const wsTimeNum = parseInt(wsTime, 16);
-  if (Number.isNaN(wsTimeNum) || wsTimeNum < nowSecs + 20 * 60) {
-    wsTime = (nowSecs + 24 * 60 * 60).toString(16);
-  }
+    let wsTime = params.get("wsTime") ?? "";
+    const wsTimeNum = parseInt(wsTime, 16);
+    if (Number.isNaN(wsTimeNum) || wsTimeNum < nowSecs + 20 * 60) {
+      wsTime = (nowSecs + 24 * 60 * 60).toString(16);
+    }
 
-  const secretStr =
-    `${secretPrefix}_${convertUid}_${streamName}_${secretHash}_${wsTime}`;
-  const wsSecret = md5Hex(secretStr);
-  const fs = params.get("fs") ?? messages.stream.antiCode.fsDefault;
-  const encodedFm = encodeURIComponent(params.get("fm") ?? "");
+    const secretStr =
+      `${secretPrefix}_${convertUid}_${streamName}_${secretHash}_${wsTime}`;
+    const wsSecret = md5Hex(secretStr);
+    const fs = params.get("fs") ?? messages.stream.antiCode.fsDefault;
+    const encodedFm = encodeURIComponent(params.get("fm") ?? "");
 
-  return (
-    `wsSecret=${wsSecret}&wsTime=${wsTime}&seqid=${seqId}&ctype=${ctype}` +
-    `&ver=${messages.stream.antiCode.ver}&fs=${fs}&fm=${encodedFm}&t=${platformId}&u=${convertUid}`
-  );
+    return (
+      `wsSecret=${wsSecret}&wsTime=${wsTime}&seqid=${seqId}&ctype=${ctype}` +
+      `&ver=${messages.stream.antiCode.ver}&fs=${fs}&fm=${encodedFm}&t=${platformId}&u=${convertUid}`
+    );
+  });
 }
 
 function generateRandomUid(): bigint {
@@ -111,11 +123,7 @@ function rotl64(value: bigint): bigint {
 }
 
 function decodeUrlComponent(input: string): string {
-  try {
-    return decodeURIComponent(input);
-  } catch {
-    return input;
-  }
+  return decodeURIComponent(input);
 }
 
 function base64Decode(input: string): string {

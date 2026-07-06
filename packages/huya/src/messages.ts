@@ -43,5 +43,6 @@ export const messages = {
     streamDataNotFound: "Huya stream data not found",
     streamDataIncomplete: "Huya stream data is incomplete",
     streamDataParseFailed: "Failed to parse Huya stream data",
+    antiCodeDecodeFailed: "Failed to decode Huya anti-code parameter",
   },
 } as const;

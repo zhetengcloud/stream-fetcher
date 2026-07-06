@@ -161,11 +161,7 @@ function segmentUrls(playlist: ParsedPlaylist, baseUrl: URL): string[] {
 }
 
 function resolveUrl(value: string, baseUrl: URL): URL {
-  try {
-    return new URL(value);
-  } catch {
-    return new URL(value, baseUrl);
-  }
+  return URL.canParse(value) ? new URL(value) : new URL(value, baseUrl);
 }
 
 function fetchSegment(

@@ -1,4 +1,5 @@
 import { assertEquals } from "@std/assert";
+import { Effect } from "effect";
 import { fetchRoomPage } from "@stream-fetcher/huya/internal";
 
 Deno.test("fetchRoomPage fetches and decodes the room page", async () => {
@@ -17,11 +18,11 @@ Deno.test("fetchRoomPage fetches and decodes the room page", async () => {
   const port = (server.addr as Deno.NetAddr).port;
 
   try {
-    const page = await fetchRoomPage({
+    const page = await Effect.runPromise(fetchRoomPage({
       referer: "https://www.huya.com/testroom",
       roomId: "testroom",
       webBase: `http://localhost:${port}`,
-    });
+    }));
 
     assertEquals(page.includes('"state":"ON"'), true);
     assertEquals(receivedReferer, "https://www.huya.com/testroom");
@@ -42,11 +43,11 @@ Deno.test("fetchRoomPage decodes HTML entities", async () => {
   const port = (server.addr as Deno.NetAddr).port;
 
   try {
-    const page = await fetchRoomPage({
+    const page = await Effect.runPromise(fetchRoomPage({
       referer: "https://www.huya.com/testroom",
       roomId: "testroom",
       webBase: `http://localhost:${port}`,
-    });
+    }));
 
     assertEquals(page, '<html>"hello&world<</html>');
   } finally {
@@ -64,11 +65,11 @@ Deno.test("fetchRoomPage throws on non-OK response", async () => {
   try {
     let thrown = false;
     try {
-      await fetchRoomPage({
+      await Effect.runPromise(fetchRoomPage({
         referer: "https://www.huya.com/testroom",
         roomId: "testroom",
         webBase: `http://localhost:${port}`,
-      });
+      }));
     } catch (err) {
       thrown = true;
       assertEquals(
