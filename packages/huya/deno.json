@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "exports": {
     ".": "./mod.ts",
-    "./messages": "./src/messages.ts"
+    "./messages": "./src/messages.ts",
+    "./internal": "./src/internal.ts"
   },
   "imports": {
     "@stream-fetcher/core": "../core/mod.ts"

@@ -11,7 +11,7 @@ export interface ApplyRatioOptions {
 export function applyRatio(options: ApplyRatioOptions): string {
   const { url, bitrateInfo, maxBitrate, maxRatio } = options;
 
-  if (maxRatio === 0 || url.includes("&ratio")) {
+  if (maxRatio === 0 || url.includes("ratio=")) {
     return url;
   }
 

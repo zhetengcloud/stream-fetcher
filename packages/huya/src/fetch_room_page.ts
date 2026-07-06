@@ -31,10 +31,10 @@ export async function fetchRoomPage(
 
 function decodeHtmlEntities(input: string): string {
   return input
-    .replace(/"/g, '"')
-    .replace(/&#34;/g, '"')
-    .replace(/&#x22;/g, '"')
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">");
+    .replace(/\u0026quot;/g, `"`)
+    .replace(/\u0026#34;/g, `"`)
+    .replace(/\u0026#x22;/g, `"`)
+    .replace(/\u0026amp;/g, "\u0026")
+    .replace(/\u0026lt;/g, "\u003c")
+    .replace(/\u0026gt;/g, "\u003e");
 }
