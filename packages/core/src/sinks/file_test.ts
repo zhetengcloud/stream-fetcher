@@ -1,7 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { FileSink } from "@stream-fetcher/core";
 import type { FileSystem } from "@stream-fetcher/core";
-import { lastValueFrom, Observable, of } from "rxjs";
 
 function createInMemoryFs(): {
   fs: FileSystem;
@@ -10,48 +9,59 @@ function createInMemoryFs(): {
   const files = new Map<string, Uint8Array>();
 
   const fs: FileSystem = {
-    write(path: string, source$: Observable<Uint8Array>): Observable<void> {
-      return new Observable<void>((subscriber) => {
-        const chunks: Uint8Array[] = [];
-        const subscription = source$.subscribe({
-          next: (chunk) => chunks.push(chunk.slice()),
-          error: (err) => subscriber.error(err),
-          complete: () => {
-            const total = chunks.reduce((acc, c) => acc + c.length, 0);
-            const merged = new Uint8Array(total);
-            let offset = 0;
-            for (const c of chunks) {
-              merged.set(c, offset);
-              offset += c.length;
-            }
-            files.set(path, merged);
-            subscriber.complete();
-          },
-        });
-        return () => subscription.unsubscribe();
-      });
+    async write(
+      path: string,
+      stream: ReadableStream<Uint8Array>,
+    ): Promise<void> {
+      const reader = stream.getReader();
+      const chunks: Uint8Array[] = [];
+      try {
+        while (true) {
+          const result = await reader.read();
+          if (result.done) break;
+          chunks.push(result.value.slice());
+        }
+      } finally {
+        reader.releaseLock();
+      }
+      const total = chunks.reduce((acc, c) => acc + c.length, 0);
+      const merged = new Uint8Array(total);
+      let offset = 0;
+      for (const c of chunks) {
+        merged.set(c, offset);
+        offset += c.length;
+      }
+      files.set(path, merged);
     },
-    mkdir(): Observable<void> {
-      return of(undefined);
+    async mkdir(): Promise<void> {
+      // no-op for in-memory fs
     },
   };
 
   return { fs, files };
 }
 
+function byteStream(chunks: Uint8Array[]): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) {
+        controller.enqueue(chunk);
+      }
+      controller.close();
+    },
+  });
+}
+
 Deno.test("FileSink writes chunks through the supplied FileSystem", async () => {
   const { fs, files } = createInMemoryFs();
   const sink = new FileSink();
-  const source$ = new Observable<Uint8Array>((subscriber) => {
-    subscriber.next(new TextEncoder().encode("hello"));
-    subscriber.next(new TextEncoder().encode(" "));
-    subscriber.next(new TextEncoder().encode("world"));
-    subscriber.complete();
-  });
+  const source = byteStream([
+    new TextEncoder().encode("hello"),
+    new TextEncoder().encode(" "),
+    new TextEncoder().encode("world"),
+  ]);
 
-  await lastValueFrom(sink.write(source$, { path: "/tmp/foo.bin", fs }), {
-    defaultValue: undefined,
-  });
+  await sink.write(source, { path: "/tmp/foo.bin", fs });
 
   assertEquals(
     new TextDecoder().decode(files.get("/tmp/foo.bin")),

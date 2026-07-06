@@ -1,48 +1,55 @@
-import type { FileSystem } from "@stream-fetcher/core/types";
-import { defer, Observable } from "rxjs";
+import { Effect, Stream } from "effect";
+import type { EffectFileSystem, FileSystem } from "@stream-fetcher/core/types";
 
 /** Creates a FileSystem adapter backed by Deno APIs. */
 export function createDenoFileSystem(): FileSystem {
   return {
-    write(
+    async write(
       path: string,
-      source$: Observable<Uint8Array>,
-    ): Observable<void> {
-      return new Observable<void>((subscriber) => {
-        let writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
-        let subscription: { unsubscribe(): void } | null = null;
+      stream: ReadableStream<Uint8Array>,
+    ): Promise<void> {
+      const file = await Deno.open(path, {
+        write: true,
+        create: true,
+        truncate: true,
+      });
+      try {
+        await stream.pipeTo(file.writable);
+      } finally {
+        file.close();
+      }
+    },
+    async mkdir(dir: string): Promise<void> {
+      await Deno.mkdir(dir, { recursive: true });
+    },
+  };
+}
 
-        Deno.open(path, {
-          write: true,
-          create: true,
-          truncate: true,
-        }).then((file) => {
-          if (subscriber.closed) {
-            file.close();
-            return;
-          }
-          writer = file.writable.getWriter();
-          subscription = source$.subscribe({
-            next: (chunk) => writer?.write(chunk),
-            error: (err) => {
-              writer?.abort(err).catch(() => {});
-              subscriber.error(err);
-            },
-            complete: () => {
-              writer?.close().catch(() => {});
-              subscriber.complete();
-            },
-          });
-        }).catch((err) => subscriber.error(err));
-
-        subscriber.add(() => {
-          subscription?.unsubscribe();
-          writer?.abort().catch(() => {});
-        });
+/** Creates an EffectFileSystem adapter backed by Deno APIs. */
+export function createDenoEffectFileSystem(): EffectFileSystem {
+  return {
+    write(path: string, stream: Stream.Stream<Uint8Array, Error, never>) {
+      return Effect.gen(function* () {
+        const readable = yield* Stream.toReadableStreamEffect(stream);
+        yield* Effect.acquireUseRelease(
+          Effect.promise(() =>
+            Deno.open(path, {
+              write: true,
+              create: true,
+              truncate: true,
+            })
+          ),
+          (file) =>
+            Effect.tryPromise({
+              try: () => readable.pipeTo(file.writable),
+              catch: (err) => new Error(String(err)),
+            }),
+          (file) => Effect.sync(() => file.close()),
+        );
       });
     },
-    mkdir(dir: string): Observable<void> {
-      return defer(() => Deno.mkdir(dir, { recursive: true }));
+    mkdir(dir: string) {
+      return Effect.promise(() => Deno.mkdir(dir, { recursive: true }));
     },
   };
 }

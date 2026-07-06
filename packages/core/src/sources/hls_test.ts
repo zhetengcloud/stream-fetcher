@@ -1,6 +1,29 @@
 import { assertEquals } from "@std/assert";
 import { HlsSource } from "@stream-fetcher/core";
-import { lastValueFrom, toArray } from "rxjs";
+
+async function readAll(
+  stream: ReadableStream<Uint8Array>,
+): Promise<Uint8Array> {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  try {
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      chunks.push(result.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const total = chunks.reduce((acc, c) => acc + c.length, 0);
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    merged.set(c, offset);
+    offset += c.length;
+  }
+  return merged;
+}
 
 Deno.test("HlsSource emits concatenated segment bytes for VOD playlist", async () => {
   const segments = ["hello", " ", "world"];
@@ -36,12 +59,10 @@ Deno.test("HlsSource emits concatenated segment bytes for VOD playlist", async (
 
   try {
     const source = new HlsSource();
-    const source$ = source.open({
+    const stream = await source.open({
       playlistUrl: `http://localhost:${port}/playlist.m3u8`,
     });
-
-    const chunks = await lastValueFrom(source$.pipe(toArray()));
-    const total = new TextDecoder().decode(concat(chunks));
+    const total = new TextDecoder().decode(await readAll(stream));
 
     assertEquals(total, "hello world");
   } finally {
@@ -83,14 +104,12 @@ Deno.test("HlsSource refreshes live playlist and fetches new segments", async ()
 
   try {
     const source = new HlsSource();
-    const source$ = source.open({
+    const stream = await source.open({
       playlistUrl: `http://localhost:${port}/live.m3u8`,
       refreshIntervalMs: 50,
       maxRefreshCount: 4,
     });
-
-    const chunks = await lastValueFrom(source$.pipe(toArray()));
-    const total = new TextDecoder().decode(concat(chunks));
+    const total = new TextDecoder().decode(await readAll(stream));
 
     assertEquals(total, "seg0seg1seg2seg3seg4");
   } finally {
@@ -136,26 +155,13 @@ Deno.test("HlsSource supports relative and absolute segment URLs", async () => {
 
   try {
     const source = new HlsSource();
-    const source$ = source.open({
+    const stream = await source.open({
       playlistUrl: `http://localhost:${port}/playlist.m3u8`,
     });
-
-    const chunks = await lastValueFrom(source$.pipe(toArray()));
-    const total = new TextDecoder().decode(concat(chunks));
+    const total = new TextDecoder().decode(await readAll(stream));
 
     assertEquals(total, "absoluteremote");
   } finally {
     await server.shutdown();
   }
 });
-
-function concat(chunks: Uint8Array[]): Uint8Array {
-  const total = chunks.reduce((acc, c) => acc + c.length, 0);
-  const merged = new Uint8Array(total);
-  let offset = 0;
-  for (const c of chunks) {
-    merged.set(c, offset);
-    offset += c.length;
-  }
-  return merged;
-}

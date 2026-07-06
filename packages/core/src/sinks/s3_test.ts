@@ -1,6 +1,5 @@
 import { assertEquals, assertExists } from "@std/assert";
 import { S3Sink } from "@stream-fetcher/core/sinks/s3";
-import { lastValueFrom, Observable } from "rxjs";
 
 interface CapturedRequest {
   method: string;
@@ -31,7 +30,7 @@ function createMockS3Server(): {
 
         if (url.searchParams.has("uploads")) {
           return new Response(
-            `<?xml version="1.0" encoding="UTF-8"?><InitiateMultipartUploadResult><UploadId>test-upload-id</UploadId></InitiateMultipartUploadResult>`,
+            `?<?xml version="1.0" encoding="UTF-8"?><InitiateMultipartUploadResult><UploadId>test-upload-id</UploadId></InitiateMultipartUploadResult>`,
             { headers: { "Content-Type": "application/xml" } },
           );
         }
@@ -45,7 +44,7 @@ function createMockS3Server(): {
 
         if (url.searchParams.has("uploadId")) {
           return new Response(
-            `<?xml version="1.0" encoding="UTF-8"?><CompleteMultipartUploadResult><Location>http://mock/object.ts</Location></CompleteMultipartUploadResult>`,
+            `?<?xml version="1.0" encoding="UTF-8"?><CompleteMultipartUploadResult><Location>http://mock/object.ts</Location></CompleteMultipartUploadResult>`,
             { headers: { "Content-Type": "application/xml" } },
           );
         }
@@ -67,29 +66,37 @@ function createMockS3Server(): {
   };
 }
 
+function byteStream(chunks: Uint8Array[]): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) {
+        controller.enqueue(chunk);
+      }
+      controller.close();
+    },
+  });
+}
+
 Deno.test("S3Sink performs multipart upload to a mock S3 server", async () => {
   const { requests, start } = createMockS3Server();
   const { url, stop } = await start();
 
   try {
     const sink = new S3Sink();
-    const source$ = new Observable<Uint8Array>((subscriber) => {
-      subscriber.next(new TextEncoder().encode("0123456789"));
-      subscriber.next(new TextEncoder().encode("abcdefghij"));
-      subscriber.complete();
-    });
+    const source = byteStream([
+      new TextEncoder().encode("0123456789"),
+      new TextEncoder().encode("abcdefghij"),
+    ]);
 
-    await lastValueFrom(
-      sink.write(source$, {
-        endpoint: url,
-        bucket: "test-bucket",
-        key: "stream.ts",
-        accessKeyId: "AKIAIOSFODNN7EXAMPLE",
-        secretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-        region: "us-east-1",
-        partSize: 10,
-      }),
-    );
+    await sink.write(source, {
+      endpoint: url,
+      bucket: "test-bucket",
+      key: "stream.ts",
+      accessKeyId: "AKIAIOSFODNN7EXAMPLE",
+      secretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+      region: "us-east-1",
+      partSize: 10,
+    });
 
     const initiate = requests.find((r) => r.url.includes("uploads="));
     assertExists(initiate);

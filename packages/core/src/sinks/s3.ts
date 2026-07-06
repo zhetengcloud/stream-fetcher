@@ -1,18 +1,7 @@
-import type { Sink } from "@stream-fetcher/core/types";
+import { Effect, Ref, Stream } from "effect";
+import type { EffectSink, Sink } from "@stream-fetcher/core/types";
 import { signRequest } from "@stream-fetcher/core/utils/s3_sign";
-import {
-  catchError,
-  concat,
-  concatMap,
-  concatWith,
-  defer,
-  ignoreElements,
-  type Observable,
-  of,
-  switchMap,
-  tap,
-  throwError,
-} from "rxjs";
+import { toSink } from "@stream-fetcher/core/adapters/effect";
 
 export interface S3SinkOptions {
   /** S3 endpoint, e.g. https://s3.amazonaws.com or https://oss-cn-hangzhou.aliyuncs.com */
@@ -42,27 +31,41 @@ interface CompletedPart {
   ETag: string;
 }
 
+interface UploadState {
+  buffer: Uint8Array;
+  partNumber: number;
+  parts: CompletedPart[];
+}
+
 /** Uploads a byte stream to S3-compatible object storage using multipart upload. */
-export class S3Sink implements Sink<S3SinkOptions> {
+export class S3EffectSink implements EffectSink<S3SinkOptions> {
   readonly name = "s3";
 
   write(
-    source$: Observable<Uint8Array>,
+    stream: Stream.Stream<Uint8Array, Error, never>,
     options: S3SinkOptions,
-  ): Observable<void> {
+  ): Effect.Effect<void, Error, never> {
     const client = new S3MultipartClient(options);
-    return client.write(source$);
+    return client.write(stream);
+  }
+}
+
+/** Web-standard S3 sink. */
+export class S3Sink implements Sink<S3SinkOptions> {
+  readonly name = "s3";
+  readonly #effectSink = new S3EffectSink();
+
+  async write(
+    stream: ReadableStream<Uint8Array>,
+    options: S3SinkOptions,
+  ): Promise<void> {
+    await toSink(this.#effectSink).write(stream, options);
   }
 }
 
 class S3MultipartClient {
   #objectUrl: URL;
   #options: Required<S3SinkOptions>;
-  #uploadId: string | null = null;
-  #parts: CompletedPart[] = [];
-  #partNumber = 1;
-  #buffer = new Uint8Array(0);
-  #completed = false;
 
   constructor(options: S3SinkOptions) {
     const endpoint = options.endpoint.toString().replace(/\/$/, "");
@@ -82,154 +85,195 @@ class S3MultipartClient {
     };
   }
 
-  write(source$: Observable<Uint8Array>): Observable<void> {
-    return this.#createMultipartUpload().pipe(
-      tap((uploadId) => {
-        this.#uploadId = uploadId;
-      }),
-      switchMap(() =>
-        source$.pipe(
-          concatMap((chunk) => this.#handleChunk(chunk)),
-          ignoreElements(),
-          concatWith(this.#flushRemainingAndComplete()),
-          catchError((err) =>
-            this.#abortMultipartUpload(err).pipe(
-              switchMap(() => throwError(() => err)),
-            )
-          ),
-        )
-      ),
-    );
-  }
+  write(
+    stream: Stream.Stream<Uint8Array, Error, never>,
+  ): Effect.Effect<void, Error, never> {
+    return Effect.gen(this, function* () {
+      const uploadId = yield* this.#createMultipartUpload();
+      const state = yield* Ref.make<UploadState>({
+        buffer: new Uint8Array(0),
+        partNumber: 1,
+        parts: [],
+      });
 
-  #handleChunk(chunk: Uint8Array): Observable<void> {
-    const combined = new Uint8Array(this.#buffer.length + chunk.length);
-    combined.set(this.#buffer);
-    combined.set(chunk, this.#buffer.length);
-    this.#buffer = combined;
+      const upload = stream.pipe(
+        Stream.runForEach((chunk) => this.#handleChunk(chunk, state, uploadId)),
+      );
 
-    const uploads: Observable<void>[] = [];
-    while (this.#buffer.length >= this.#options.partSize) {
-      const part = this.#buffer.subarray(0, this.#options.partSize);
-      this.#buffer = this.#buffer.subarray(this.#options.partSize);
-      const currentPartNumber = this.#partNumber++;
-      uploads.push(
-        this.#uploadPart(part, currentPartNumber).pipe(
-          tap((etag) => {
-            this.#parts.push({ PartNumber: currentPartNumber, ETag: etag });
-          }),
-          ignoreElements(),
+      yield* upload.pipe(
+        Effect.catchAll((err) =>
+          this.#abortMultipartUpload(uploadId).pipe(
+            Effect.flatMap(() => Effect.fail(err)),
+          )
         ),
       );
-    }
 
-    if (uploads.length === 0) {
-      return of(undefined);
-    }
-    return concat(...uploads);
+      yield* this.#flushRemainingAndComplete(state, uploadId);
+    });
   }
 
-  #flushRemainingAndComplete(): Observable<void> {
-    this.#completed = true;
-    if (this.#buffer.length === 0) {
-      return this.#completeMultipartUpload();
-    }
-    const currentPartNumber = this.#partNumber;
-    return this.#uploadPart(this.#buffer, currentPartNumber).pipe(
-      tap((etag) => {
-        this.#parts.push({ PartNumber: currentPartNumber, ETag: etag });
-      }),
-      ignoreElements(),
-      concatWith(this.#completeMultipartUpload()),
-    );
+  #handleChunk(
+    chunk: Uint8Array,
+    state: Ref.Ref<UploadState>,
+    uploadId: string,
+  ): Effect.Effect<void, Error, never> {
+    return Effect.gen(this, function* () {
+      const current = yield* Ref.get(state);
+      let buffer = concat(current.buffer, chunk);
+      let partNumber = current.partNumber;
+      const parts = [...current.parts];
+
+      while (buffer.length >= this.#options.partSize) {
+        const part = buffer.subarray(0, this.#options.partSize);
+        buffer = buffer.subarray(this.#options.partSize);
+        const etag = yield* this.#uploadPart(part, partNumber, uploadId);
+        parts.push({ PartNumber: partNumber, ETag: etag });
+        partNumber++;
+      }
+
+      yield* Ref.set(state, { buffer, partNumber, parts });
+    });
   }
 
-  #createMultipartUpload(): Observable<string> {
-    return defer(async () => {
+  #flushRemainingAndComplete(
+    state: Ref.Ref<UploadState>,
+    uploadId: string,
+  ): Effect.Effect<void, Error, never> {
+    return Effect.gen(this, function* () {
+      const current = yield* Ref.get(state);
+      if (current.buffer.length === 0) {
+        yield* this.#completeMultipartUpload(uploadId, current.parts);
+        return;
+      }
+      const etag = yield* this.#uploadPart(
+        current.buffer,
+        current.partNumber,
+        uploadId,
+      );
+      const parts = [
+        ...current.parts,
+        { PartNumber: current.partNumber, ETag: etag },
+      ];
+      yield* this.#completeMultipartUpload(uploadId, parts);
+    });
+  }
+
+  #createMultipartUpload(): Effect.Effect<string, Error, never> {
+    return Effect.gen(this, function* () {
       const uploadUrl = new URL(this.#objectUrl);
       uploadUrl.searchParams.set("uploads", "");
 
-      const headers = await signRequest({
-        method: "POST",
-        url: uploadUrl,
-        headers: {
-          "x-amz-content-sha256":
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        },
-        body: new Uint8Array(0),
-        accessKeyId: this.#options.accessKeyId,
-        secretAccessKey: this.#options.secretAccessKey,
-        sessionToken: this.#options.sessionToken || undefined,
-        region: this.#options.region,
-        service: this.#options.service,
+      const headers = yield* Effect.tryPromise({
+        try: () =>
+          signRequest({
+            method: "POST",
+            url: uploadUrl,
+            headers: {
+              "x-amz-content-sha256":
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            },
+            body: new Uint8Array(0),
+            accessKeyId: this.#options.accessKeyId,
+            secretAccessKey: this.#options.secretAccessKey,
+            sessionToken: this.#options.sessionToken || undefined,
+            region: this.#options.region,
+            service: this.#options.service,
+          }),
+        catch: (err) => err instanceof Error ? err : new Error(String(err)),
       });
 
-      const response = await fetch(uploadUrl, {
-        method: "POST",
-        headers,
-        body: new Uint8Array(0) as BodyInit,
-        signal: this.#options.signal,
+      const response = yield* Effect.tryPromise({
+        try: () =>
+          fetch(uploadUrl, {
+            method: "POST",
+            headers,
+            body: new Uint8Array(0) as BodyInit,
+            signal: this.#options.signal,
+          }),
+        catch: (err) => err instanceof Error ? err : new Error(String(err)),
       });
 
       if (!response.ok) {
-        throw new Error(
-          `createMultipartUpload failed: ${response.status} ${await response
-            .text()}`,
+        const text = yield* Effect.tryPromise(() => response.text());
+        return yield* Effect.fail(
+          new Error(`createMultipartUpload failed: ${response.status} ${text}`),
         );
       }
 
-      const xml = await response.text();
+      const xml = yield* Effect.tryPromise(() => response.text());
       const match = xml.match(/<UploadId>(.+?)<\/UploadId>/);
-      if (!match) throw new Error("UploadId not found in response");
+      if (!match) {
+        return yield* Effect.fail(new Error("UploadId not found in response"));
+      }
       return match[1];
     });
   }
 
-  #uploadPart(body: Uint8Array, partNumber: number): Observable<string> {
-    return defer(async () => {
+  #uploadPart(
+    body: Uint8Array,
+    partNumber: number,
+    uploadId: string,
+  ): Effect.Effect<string, Error, never> {
+    return Effect.gen(this, function* () {
       const partUrl = new URL(this.#objectUrl);
-      partUrl.searchParams.set("uploadId", this.#uploadId!);
+      partUrl.searchParams.set("uploadId", uploadId);
       partUrl.searchParams.set("partNumber", String(partNumber));
 
-      const headers = await signRequest({
-        method: "PUT",
-        url: partUrl,
-        headers: {},
-        body,
-        accessKeyId: this.#options.accessKeyId,
-        secretAccessKey: this.#options.secretAccessKey,
-        sessionToken: this.#options.sessionToken || undefined,
-        region: this.#options.region,
-        service: this.#options.service,
+      const headers = yield* Effect.tryPromise({
+        try: () =>
+          signRequest({
+            method: "PUT",
+            url: partUrl,
+            headers: {},
+            body,
+            accessKeyId: this.#options.accessKeyId,
+            secretAccessKey: this.#options.secretAccessKey,
+            sessionToken: this.#options.sessionToken || undefined,
+            region: this.#options.region,
+            service: this.#options.service,
+          }),
+        catch: (err) => err instanceof Error ? err : new Error(String(err)),
       });
 
-      const response = await fetch(partUrl, {
-        method: "PUT",
-        headers,
-        body: body as BodyInit,
-        signal: this.#options.signal,
+      const response = yield* Effect.tryPromise({
+        try: () =>
+          fetch(partUrl, {
+            method: "PUT",
+            headers,
+            body: body as BodyInit,
+            signal: this.#options.signal,
+          }),
+        catch: (err) => err instanceof Error ? err : new Error(String(err)),
       });
 
       if (!response.ok) {
-        throw new Error(
-          `uploadPart failed: ${response.status} ${await response.text()}`,
+        const text = yield* Effect.tryPromise(() => response.text());
+        return yield* Effect.fail(
+          new Error(`uploadPart failed: ${response.status} ${text}`),
         );
       }
 
       const etag = response.headers.get("ETag");
-      if (!etag) throw new Error("ETag missing from uploadPart response");
+      if (!etag) {
+        return yield* Effect.fail(
+          new Error("ETag missing from uploadPart response"),
+        );
+      }
       return etag;
     });
   }
 
-  #completeMultipartUpload(): Observable<void> {
-    return defer(async () => {
+  #completeMultipartUpload(
+    uploadId: string,
+    parts: CompletedPart[],
+  ): Effect.Effect<void, Error, never> {
+    return Effect.gen(this, function* () {
       const completeUrl = new URL(this.#objectUrl);
-      completeUrl.searchParams.set("uploadId", this.#uploadId!);
+      completeUrl.searchParams.set("uploadId", uploadId);
 
       const body = new TextEncoder().encode(
         `<CompleteMultipartUpload>` +
-          this.#parts
+          parts
             .map(
               (p) =>
                 `<Part><PartNumber>${p.PartNumber}</PartNumber><ETag>${p.ETag}</ETag></Part>`,
@@ -238,60 +282,81 @@ class S3MultipartClient {
           `</CompleteMultipartUpload>`,
       );
 
-      const headers = await signRequest({
-        method: "POST",
-        url: completeUrl,
-        headers: { "Content-Type": "application/xml" },
-        body,
-        accessKeyId: this.#options.accessKeyId,
-        secretAccessKey: this.#options.secretAccessKey,
-        sessionToken: this.#options.sessionToken || undefined,
-        region: this.#options.region,
-        service: this.#options.service,
+      const headers = yield* Effect.tryPromise({
+        try: () =>
+          signRequest({
+            method: "POST",
+            url: completeUrl,
+            headers: { "Content-Type": "application/xml" },
+            body,
+            accessKeyId: this.#options.accessKeyId,
+            secretAccessKey: this.#options.secretAccessKey,
+            sessionToken: this.#options.sessionToken || undefined,
+            region: this.#options.region,
+            service: this.#options.service,
+          }),
+        catch: (err) => err instanceof Error ? err : new Error(String(err)),
       });
 
-      const response = await fetch(completeUrl, {
-        method: "POST",
-        headers,
-        body: body as BodyInit,
-        signal: this.#options.signal,
+      const response = yield* Effect.tryPromise({
+        try: () =>
+          fetch(completeUrl, {
+            method: "POST",
+            headers,
+            body: body as BodyInit,
+            signal: this.#options.signal,
+          }),
+        catch: (err) => err instanceof Error ? err : new Error(String(err)),
       });
 
       if (!response.ok) {
-        throw new Error(
-          `completeMultipartUpload failed: ${response.status} ${await response
-            .text()}`,
+        const text = yield* Effect.tryPromise(() => response.text());
+        return yield* Effect.fail(
+          new Error(
+            `completeMultipartUpload failed: ${response.status} ${text}`,
+          ),
         );
       }
     });
   }
 
-  #abortMultipartUpload(_err: unknown): Observable<void> {
-    this.#completed = true;
-    return defer(async () => {
-      if (!this.#uploadId) return;
+  #abortMultipartUpload(uploadId: string): Effect.Effect<void, never, never> {
+    return Effect.gen(this, function* () {
       const abortUrl = new URL(this.#objectUrl);
-      abortUrl.searchParams.set("uploadId", this.#uploadId);
+      abortUrl.searchParams.set("uploadId", uploadId);
 
-      const headers = await signRequest({
-        method: "DELETE",
-        url: abortUrl,
-        headers: {},
-        body: new Uint8Array(0),
-        accessKeyId: this.#options.accessKeyId,
-        secretAccessKey: this.#options.secretAccessKey,
-        sessionToken: this.#options.sessionToken || undefined,
-        region: this.#options.region,
-        service: this.#options.service,
+      const headers = yield* Effect.tryPromise({
+        try: () =>
+          signRequest({
+            method: "DELETE",
+            url: abortUrl,
+            headers: {},
+            body: new Uint8Array(0),
+            accessKeyId: this.#options.accessKeyId,
+            secretAccessKey: this.#options.secretAccessKey,
+            sessionToken: this.#options.sessionToken || undefined,
+            region: this.#options.region,
+            service: this.#options.service,
+          }),
+        catch: (err) => err instanceof Error ? err : new Error(String(err)),
       });
 
-      await fetch(abortUrl, {
-        method: "DELETE",
-        headers,
-        signal: this.#options.signal,
-      });
-    }).pipe(
-      catchError(() => of(undefined)),
-    );
+      yield* Effect.tryPromise({
+        try: () =>
+          fetch(abortUrl, {
+            method: "DELETE",
+            headers,
+            signal: this.#options.signal,
+          }).then(() => undefined),
+        catch: (err) => err instanceof Error ? err : new Error(String(err)),
+      }).pipe(Effect.orElse(() => Effect.void));
+    }).pipe(Effect.catchAll(() => Effect.void));
   }
+}
+
+function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
+  const combined = new Uint8Array(a.length + b.length);
+  combined.set(a);
+  combined.set(b, a.length);
+  return combined;
 }

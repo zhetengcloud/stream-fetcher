@@ -1,17 +1,6 @@
-import type { Source } from "@stream-fetcher/core/types";
-import {
-  concatMap,
-  finalize,
-  from,
-  interval,
-  map,
-  type Observable,
-  scan,
-  startWith,
-  switchMap,
-  take,
-  takeWhile,
-} from "rxjs";
+import { Chunk, Effect, Option, Stream } from "effect";
+import type { EffectSource, Source } from "@stream-fetcher/core/types";
+import { toSource } from "@stream-fetcher/core/adapters/effect";
 
 /** Options for the HLS source. */
 export interface HlsSourceOptions {
@@ -32,88 +21,118 @@ export interface HlsSourceOptions {
 
 /**
  * Fetches an HLS playlist and emits the concatenated bytes of its segments as a
- * single Observable.
+ * single stream.
  *
  * Supports VOD and live (sliding-window) playlists. For live playlists, the
  * source refreshes the playlist at `refreshIntervalMs` and fetches new segments
  * as they appear.
  */
-export class HlsSource implements Source<HlsSourceOptions> {
+export class HlsEffectSource implements EffectSource<HlsSourceOptions> {
   readonly name = "hls";
 
-  open(options: HlsSourceOptions): Observable<Uint8Array> {
-    const abortController = new AbortController();
-    const signal = combineSignals(abortController, options.signal);
+  open(options: HlsSourceOptions): Stream.Stream<Uint8Array, Error, never> {
+    const baseUrl = new URL(options.playlistUrl);
+    const headers = options.headers;
+    const signal = options.signal ?? new AbortController().signal;
+    const refreshIntervalMs = options.refreshIntervalMs ?? 2000;
+    const maxRefreshCount = options.maxRefreshCount ?? Infinity;
 
-    return createBytesObservable({
-      baseUrl: new URL(options.playlistUrl),
-      headers: options.headers,
-      refreshIntervalMs: options.refreshIntervalMs ?? 2000,
-      maxRefreshCount: options.maxRefreshCount ?? Infinity,
-      signal,
-    }).pipe(
-      finalize(() => abortController.abort()),
+    const initialState: PollState = {
+      fetched: new Set<string>(),
+      isEndlist: false,
+      refreshCount: 0,
+    };
+
+    return Stream.unfoldChunkEffect(
+      initialState,
+      (state) =>
+        Effect.gen(function* () {
+          if (signal.aborted || state.refreshCount > maxRefreshCount) {
+            return Option.none();
+          }
+
+          const playlist = yield* fetchPlaylist(baseUrl, headers, signal);
+          const pending = segmentUrls(playlist, baseUrl).filter((url) =>
+            !state.fetched.has(url)
+          );
+          const fetched = addAll(state.fetched, pending);
+
+          if (pending.length === 0) {
+            if (playlist.isEndlist) {
+              return Option.none();
+            }
+            yield* Effect.sleep(refreshIntervalMs);
+            return Option.some<[Chunk.Chunk<Uint8Array>, PollState]>([
+              Chunk.empty<Uint8Array>(),
+              {
+                fetched,
+                isEndlist: false,
+                refreshCount: state.refreshCount + 1,
+              },
+            ]);
+          }
+
+          const chunks = yield* Effect.forEach(
+            pending,
+            (url) => fetchSegment(url, headers, signal),
+            { concurrency: 1 },
+          );
+
+          if (!playlist.isEndlist) {
+            yield* Effect.sleep(refreshIntervalMs);
+          }
+
+          return Option.some<[Chunk.Chunk<Uint8Array>, PollState]>([
+            Chunk.fromIterable(chunks),
+            {
+              fetched,
+              isEndlist: playlist.isEndlist,
+              refreshCount: state.refreshCount + 1,
+            },
+          ]);
+        }).pipe(
+          Effect.catchAll((err: unknown) =>
+            isAbortError(err)
+              ? Effect.succeed(
+                Option.none<[Chunk.Chunk<Uint8Array>, PollState]>(),
+              )
+              : Effect.fail(
+                err instanceof Error ? err : new Error(String(err)),
+              )
+          ),
+        ),
     );
   }
 }
 
-function combineSignals(
-  controller: AbortController,
-  external?: AbortSignal,
-): AbortSignal {
-  if (!external) return controller.signal;
-  if (external.aborted) {
-    controller.abort();
-    return controller.signal;
+/** Web-standard HLS source. */
+export class HlsSource implements Source<HlsSourceOptions> {
+  readonly name = "hls";
+  readonly #effectSource = new HlsEffectSource();
+
+  open(options: HlsSourceOptions): Promise<ReadableStream<Uint8Array>> {
+    return Promise.resolve(
+      toSource(this.#effectSource).open(options),
+    );
   }
-  external.addEventListener("abort", () => controller.abort());
-  return controller.signal;
-}
-
-function createBytesObservable(
-  ctx: BytesObservableContext,
-): Observable<Uint8Array> {
-  const initialState: PollState = {
-    playlist: null,
-    fetched: new Set<string>(),
-    pending: [],
-  };
-
-  return interval(ctx.refreshIntervalMs).pipe(
-    startWith(0),
-    takeWhile(() => !ctx.signal.aborted),
-    take(ctx.maxRefreshCount + 1),
-    concatMap(() => fetchPlaylist(ctx.baseUrl, ctx.headers, ctx.signal)),
-    scan((state, playlist) => {
-      const segmentUrls = parseSegments(playlist, ctx.baseUrl);
-      const pending = segmentUrls.filter((url) => !state.fetched.has(url));
-      const fetched = new Set(state.fetched);
-      pending.forEach((url) => fetched.add(url));
-      return { playlist, fetched, pending };
-    }, initialState),
-    takeWhile((state) => !state.playlist?.isEndlist, true),
-    concatMap((state) =>
-      from(state.pending).pipe(
-        concatMap((url) => fetchSegment(url, ctx.headers, ctx.signal)),
-      )
-    ),
-  );
 }
 
 function fetchPlaylist(
   url: URL,
   headers: Record<string, string> | undefined,
   signal: AbortSignal,
-): Observable<ParsedPlaylist> {
-  return from(fetch(url, { headers, signal })).pipe(
-    switchMap((response) => {
+): Effect.Effect<ParsedPlaylist, Error, never> {
+  return Effect.tryPromise({
+    try: async () => {
+      const response = await fetch(url, { headers, signal });
       if (!response.ok) {
         throw new Error(`HLS playlist request failed: ${response.status}`);
       }
-      return from(response.text());
-    }),
-    map((text) => parsePlaylist(text)),
-  );
+      return parsePlaylist(await response.text());
+    },
+    catch: (err: unknown) =>
+      err instanceof Error ? err : new Error(String(err)),
+  });
 }
 
 function parsePlaylist(text: string): ParsedPlaylist {
@@ -133,7 +152,7 @@ function parsePlaylist(text: string): ParsedPlaylist {
   return { isEndlist, segmentLines };
 }
 
-function parseSegments(playlist: ParsedPlaylist, baseUrl: URL): string[] {
+function segmentUrls(playlist: ParsedPlaylist, baseUrl: URL): string[] {
   return playlist.segmentLines.map((line) => resolveUrl(line, baseUrl).href);
 }
 
@@ -149,29 +168,39 @@ function fetchSegment(
   url: string,
   headers: Record<string, string> | undefined,
   signal: AbortSignal,
-): Observable<Uint8Array> {
-  return from(fetch(url, { headers, signal })).pipe(
-    switchMap(async (response) => {
+): Effect.Effect<Uint8Array, Error, never> {
+  return Effect.tryPromise({
+    try: async () => {
+      const response = await fetch(url, { headers, signal });
       if (!response.ok) {
         throw new Error(`HLS segment request failed: ${response.status}`);
       }
       return new Uint8Array(await response.arrayBuffer());
-    }),
-  );
+    },
+    catch: (err: unknown) =>
+      err instanceof Error ? err : new Error(String(err)),
+  });
 }
 
-interface BytesObservableContext {
-  baseUrl: URL;
-  headers: Record<string, string> | undefined;
-  refreshIntervalMs: number;
-  maxRefreshCount: number;
-  signal: AbortSignal;
+function addAll(
+  set: ReadonlySet<string>,
+  values: readonly string[],
+): Set<string> {
+  const next = new Set(set);
+  for (const value of values) {
+    next.add(value);
+  }
+  return next;
+}
+
+function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === "AbortError";
 }
 
 interface PollState {
-  playlist: ParsedPlaylist | null;
-  fetched: Set<string>;
-  pending: string[];
+  fetched: ReadonlySet<string>;
+  isEndlist: boolean;
+  refreshCount: number;
 }
 
 interface ParsedPlaylist {

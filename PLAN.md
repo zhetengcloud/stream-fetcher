@@ -21,43 +21,63 @@ References:
 ```ts
 interface Source<T = unknown> {
   readonly name: string;
-  open(options?: T): Observable<Uint8Array>;
-  close?(): Observable<void>;
+  open(options?: T): Promise<ReadableStream<Uint8Array>>;
+}
+
+interface EffectSource<T = unknown> {
+  readonly name: string;
+  open(options?: T): Stream.Stream<Uint8Array, Error, never>;
 }
 
 interface Sink<T = unknown> {
   readonly name: string;
-  write(source$: Observable<Uint8Array>, options?: T): Observable<void>;
-  close?(): Observable<void>;
+  write(stream: ReadableStream<Uint8Array>, options?: T): Promise<void>;
 }
 
-interface RecorderOptions<S, K> {
-  source: Source<S>;
-  sourceOptions?: S;
-  sink: Sink<K>;
-  sinkOptions?: K;
+interface EffectSink<T = unknown> {
+  readonly name: string;
+  write(
+    stream: Stream.Stream<Uint8Array, Error, never>,
+    options?: T,
+  ): Effect.Effect<
+    void,
+    Error,
+    never
+  >;
+}
+
+interface RecorderOptions {
   signal?: AbortSignal;
-  /** Progress emit interval in milliseconds. Defaults to 1000. */
   progressIntervalMs?: number;
-  /** Called with the error before it propagates down the Observable. */
-  onError?: (error: unknown, ctx: { source?: string; sink?: string }) => void;
+  metadata?: StreamMetadata;
 }
 
-function record<S, K>(
-  options: RecorderOptions<S, K>,
-): Observable<ProgressMetrics>;
+function record<K>(
+  source: ReadableStream<Uint8Array>,
+  sink: Sink<K>,
+  sinkOptions?: K,
+  options?: RecorderOptions,
+): ReadableStream<ProgressMetrics>;
+
+function recordEffect<K>(
+  source: Stream.Stream<Uint8Array, Error, never>,
+  sink: EffectSink<K>,
+  sinkOptions?: K,
+  options?: RecorderOptions,
+): Stream.Stream<ProgressMetrics, Error, never>;
 
 interface ProgressMetrics {
   bytes: number;
   elapsedMs: number;
   bitrateKbps: number;
   chunkCount: number;
+  metadata?: StreamMetadata;
 }
 
 interface Resolver<T = unknown> {
   readonly platform: string;
   canHandle(url: string): boolean;
-  resolve(url: string, options?: T): Observable<Source>;
+  resolve(url: string, options?: T): Promise<ResolvedStream>;
 }
 ```
 
@@ -70,11 +90,13 @@ packages/
       types.ts
       recorder.ts
       sources/http.ts
+      sources/hls.ts
       sinks/file.ts
       sinks/stdout.ts
       sinks/s3.ts
       utils/s3_sign.ts
       adapters/deno.ts
+      adapters/effect.ts
   bilibili/           # @stream-fetcher/bilibili
   huya/               # @stream-fetcher/huya
   twitch/             # @stream-fetcher/twitch (on hold)
@@ -98,7 +120,7 @@ interface StreamDetector {
   waitForLive(
     source: Source,
     options: DetectorOptions,
-  ): Observable<Uint8Array>;
+  ): Promise<ReadableStream<Uint8Array>>;
 }
 ```
 
@@ -115,8 +137,8 @@ The library is designed for microservices / Kubernetes, not an end-user CLI.
 | M  | Deliverable                                            | Status  |
 | -- | ------------------------------------------------------ | ------- |
 | M1 | Core: interfaces, `HttpSource`, `FileSink`, `record()` | ✅ Done |
-| M2 | `S3Sink`, graceful abort, and single-sink `record()`   | ✅ Done |
+| M2 | `S3Sink`, graceful abort and single-sink `record()`    | ✅ Done |
 | M3 | Workspace migration + Bilibili + Huya resolvers        | ✅ Done |
-| M4 | README + examples                                      | 🚧 Next |
+| M4 | README + Effect integration + adapter helpers          | ✅ Done |
 
 **On hold:** YouTube / Twitch resolvers.

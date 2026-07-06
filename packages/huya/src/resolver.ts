@@ -2,7 +2,6 @@ import type { ResolvedStream, Resolver } from "@stream-fetcher/core/types";
 import { HlsSource } from "@stream-fetcher/core/sources/hls";
 import { HttpSource } from "@stream-fetcher/core/sources/http";
 import md5 from "md5";
-import { defer, type Observable, of, switchMap } from "rxjs";
 import { messages } from "./messages.ts";
 
 const HUYA_WEB_BASE_URL = "https://www.huya.com";
@@ -58,10 +57,10 @@ export class HuyaResolver implements Resolver<HuyaResolverOptions> {
     return this.#roomPattern.test(url);
   }
 
-  resolve(
+  async resolve(
     url: string,
     options: HuyaResolverOptions = {},
-  ): Observable<ResolvedStream> {
+  ): Promise<ResolvedStream> {
     const match = this.#roomPattern.exec(url);
     if (!match) throw new Error(messages.errors.invalidUrl(url));
     const roomId = match[1];
@@ -79,87 +78,83 @@ export class HuyaResolver implements Resolver<HuyaResolverOptions> {
       referer: url,
     };
 
-    return this.#fetchStreamUrl(
+    const { streamUrl, title, cover, maxBitrate } = await this.#fetchStreamUrl(
       url,
       roomId,
       protocol,
       cdn?.toUpperCase(),
       maxRatio,
       _webBase,
-    ).pipe(
-      switchMap(({ streamUrl, title, cover, maxBitrate }) => {
-        const metadata = {
-          platform: this.platform,
-          format: protocol,
-          title,
-          roomId,
-          playUrl: streamUrl,
-          cover,
-          maxBitrate,
-          resolvedAt: new Date(),
-        };
-        const source = {
-          name: "huya",
-          open: () => {
-            if (isHls) {
-              return new HlsSource().open({
-                playlistUrl: streamUrl,
-                headers,
-              });
-            }
-            return new HttpSource().open({ url: streamUrl, headers });
-          },
-        };
-        return of({ metadata, source });
-      }),
     );
+
+    const metadata = {
+      platform: this.platform,
+      format: protocol,
+      title,
+      roomId,
+      playUrl: streamUrl,
+      cover,
+      maxBitrate,
+      resolvedAt: new Date(),
+    };
+
+    const source = isHls ? new HlsSource() : new HttpSource();
+    const sourceOptions = isHls
+      ? { playlistUrl: streamUrl, headers }
+      : { url: streamUrl, headers };
+
+    return {
+      metadata,
+      source: {
+        name: "huya",
+        open: () => source.open(sourceOptions as never),
+      },
+    };
   }
 
-  #fetchStreamUrl(
+  async #fetchStreamUrl(
     referer: string,
     roomId: string,
     protocol: HuyaProtocol,
     preferredCdn: string | undefined,
     maxRatio: number,
     webBase: string | undefined,
-  ): Observable<
+  ): Promise<
     { streamUrl: string; title: string; cover: string; maxBitrate: number }
   > {
-    return defer(async () => {
-      const page = await this.#getRoomPage(referer, roomId, webBase);
+    const page = await this.#getRoomPage(referer, roomId, webBase);
 
-      if (
-        page.includes(messages.pageMarkers.roomNotFound) ||
-        page.includes(messages.pageMarkers.roomBanned)
-      ) {
-        throw new Error(messages.errors.roomUnavailable);
-      }
+    if (
+      page.includes(messages.pageMarkers.roomNotFound) ||
+      page.includes(messages.pageMarkers.roomBanned)
+    ) {
+      throw new Error(messages.errors.roomUnavailable);
+    }
 
-      const profile = this.#extractRoomProfile(page);
-      if (!profile) {
-        throw new Error(messages.errors.offlineOrMissingData);
-      }
+    const profile = this.#extractRoomProfile(page);
+    if (!profile) {
+      throw new Error(messages.errors.offlineOrMissingData);
+    }
 
-      if (this.#isReplay(profile.title)) {
-        throw new Error(messages.errors.replay);
-      }
+    if (this.#isReplay(profile.title)) {
+      throw new Error(messages.errors.replay);
+    }
 
-      const streamUrls = this.#buildStreamUrls(profile.streamInfo, protocol);
-      const selectedUrl = this.#selectStreamUrl(streamUrls, preferredCdn);
-      const streamUrl = this.#applyRatio(
-        selectedUrl,
-        profile.bitrateInfo,
-        profile.maxBitrate,
-        maxRatio,
-      );
+    const streamUrls = this.#buildStreamUrls(profile.streamInfo, protocol);
+    const selectedUrl = this.#selectStreamUrl(streamUrls, preferredCdn);
+    const streamUrl = this.#applyRatio(
+      selectedUrl,
+      profile.bitrateInfo,
+      profile.maxBitrate,
+      maxRatio,
+    );
 
-      return {
-        streamUrl,
-        title: profile.title,
-        cover: profile.cover,
-        maxBitrate: profile.maxBitrate,
-      };
-    });
+    return {
+      streamUrl,
+      title: profile.title,
+      cover: profile.cover,
+      maxBitrate: profile.maxBitrate,
+    };
   }
 
   async #getRoomPage(
@@ -472,7 +467,7 @@ export class HuyaResolver implements Resolver<HuyaResolverOptions> {
 
   #decodeHtmlEntities(input: string): string {
     return input
-      .replace(/&quot;/g, '"')
+      .replace(/"/g, '"')
       .replace(/&#34;/g, '"')
       .replace(/&#x22;/g, '"')
       .replace(/&amp;/g, "&")

@@ -1,7 +1,6 @@
 import type { ResolvedStream, Resolver } from "@stream-fetcher/core/types";
 import { HlsSource } from "@stream-fetcher/core/sources/hls";
 import { HttpSource } from "@stream-fetcher/core/sources/http";
-import { defer, type Observable, of, switchMap } from "rxjs";
 import { messages } from "./messages.ts";
 
 const BILIBILI_API_BASE = "https://api.live.bilibili.com";
@@ -46,10 +45,10 @@ export class BilibiliResolver implements Resolver<BilibiliResolverOptions> {
     return this.#roomPattern.test(url);
   }
 
-  resolve(
+  async resolve(
     url: string,
     options: BilibiliResolverOptions = {},
-  ): Observable<ResolvedStream> {
+  ): Promise<ResolvedStream> {
     const match = this.#roomPattern.exec(url);
     if (!match) throw new Error(messages.errors.invalidUrl(url));
     const roomId = match[1];
@@ -68,75 +67,78 @@ export class BilibiliResolver implements Resolver<BilibiliResolverOptions> {
       ...(cookie ? { cookie } : {}),
     };
 
-    return this.#fetchStreamUrl(roomId, qn, protocol, cookie, _apiBase).pipe(
-      switchMap(({ streamUrl, title }) => {
-        const metadata = {
-          platform: this.platform,
-          format: protocol,
-          title,
-          roomId,
-          playUrl: streamUrl,
-          resolvedAt: new Date(),
-        };
-        const source = {
-          name: "bilibili",
-          open: () => {
-            if (isHls) {
-              return new HlsSource().open({
-                playlistUrl: streamUrl,
-                headers,
-              });
-            }
-            return new HttpSource().open({ url: streamUrl, headers });
-          },
-        };
-        return of({ metadata, source });
-      }),
+    const { streamUrl, title } = await this.#fetchStreamUrl(
+      roomId,
+      qn,
+      protocol,
+      cookie,
+      _apiBase,
     );
+
+    const metadata = {
+      platform: this.platform,
+      format: protocol,
+      title,
+      roomId,
+      playUrl: streamUrl,
+      resolvedAt: new Date(),
+    };
+
+    const source = isHls ? new HlsSource() : new HttpSource();
+
+    const sourceOptions = isHls
+      ? { playlistUrl: streamUrl, headers }
+      : { url: streamUrl, headers };
+
+    return {
+      metadata,
+      source: {
+        name: "bilibili",
+        open: () => source.open(sourceOptions as never),
+      },
+    };
   }
 
-  #fetchStreamUrl(
+  async #fetchStreamUrl(
     roomId: string,
     qn: number,
     protocol: BilibiliProtocol,
     cookie: string | undefined,
     apiBase: string | undefined,
-  ): Observable<{ streamUrl: string; title?: string }> {
-    return defer(async () => {
-      const platform = protocol === BilibiliProtocol.Hls ? "hls" : "web";
-      const apiUrl = new URL(
-        "/room/v1/Room/playUrl",
-        (apiBase ?? BILIBILI_API_BASE).replace(/\/$/, "") + "/",
-      );
-      apiUrl.searchParams.set("cid", roomId);
-      apiUrl.searchParams.set("qn", String(qn));
-      apiUrl.searchParams.set("platform", platform);
+  ): Promise<{ streamUrl: string; title?: string }> {
+    const platform = protocol === BilibiliProtocol.Hls ? "hls" : "web";
+    const apiUrl = new URL(
+      "/room/v1/Room/playUrl",
+      (apiBase ?? BILIBILI_API_BASE).replace(/\/$/, "") + "/",
+    );
+    apiUrl.searchParams.set("cid", roomId);
+    apiUrl.searchParams.set("qn", String(qn));
+    apiUrl.searchParams.set("platform", platform);
 
-      const headers: Record<string, string> = {
-        "user-agent": BILIBILI_USER_AGENT,
-        referer: BILIBILI_REFERER,
-      };
-      if (cookie) headers.cookie = cookie;
+    const headers: Record<string, string> = {
+      "user-agent": BILIBILI_USER_AGENT,
+      referer: BILIBILI_REFERER,
+    };
+    if (cookie) headers.cookie = cookie;
 
-      const response = await fetch(apiUrl, { headers });
-      if (!response.ok) {
-        throw new Error(messages.errors.playUrlRequestFailed(response.status));
-      }
+    const response = await fetch(apiUrl, { headers });
+    if (!response.ok) {
+      throw new Error(messages.errors.playUrlRequestFailed(response.status));
+    }
 
-      const data = (await response.json()) as PlayUrlResponse;
-      if (data.code !== 0) {
-        throw new Error(messages.errors.playUrlError(data.message, data.code));
-      }
+    const data = (await response.json()) as PlayUrlResponse;
+    if (data.code !== 0) {
+      throw new Error(messages.errors.playUrlError(data.message, data.code));
+    }
 
-      const urls = data.data?.durl;
-      if (!urls || urls.length === 0) {
-        throw new Error(messages.errors.streamUrlNotFound);
-      }
+    const urls = data.data?.durl;
+    if (!urls || urls.length === 0) {
+      throw new Error(messages.errors.streamUrlNotFound);
+    }
 
-      return {
-        streamUrl: urls[0].url,
-        title: data.data?.title,
-      };
-    });
+    return {
+      streamUrl: urls[0].url,
+      title: data.data?.title,
+    };
   }
 }

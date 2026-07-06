@@ -14,17 +14,21 @@ a `record()` function.
 
 ## Status
 
-Early design phase. See [`PLAN.md`](./PLAN.md) for architecture and milestones.
+Core interfaces implemented for Bilibili and Huya. See [`PLAN.md`](./PLAN.md)
+for architecture and milestones.
 
 ## How It Works
 
 The library is built around three small abstractions:
 
-- `Source` — produces an `Observable<Uint8Array>` of the live stream's raw bytes
-  (FLV, HLS transport stream, etc.). It does not decode video or audio.
-- `Sink` — consumes an `Observable<Uint8Array>` and writes it somewhere (file,
-  S3/OSS, stdout, a message bus, etc.).
+- `Source` — produces a `ReadableStream<Uint8Array>` of the live stream's raw
+  bytes (FLV, HLS transport stream, etc.). It does not decode video or audio.
+- `Sink` — consumes a `ReadableStream<Uint8Array>` and writes it somewhere
+  (file, S3/OSS, stdout, a message bus, etc.).
 - `record()` — wires one `Source` to one `Sink` and pumps the raw bytes through.
+
+There are also Effect-based variants (`EffectSource`, `EffectSink`,
+`recordEffect()`) for typed error handling and functional stream composition.
 
 ### Fetching and piping
 
@@ -49,8 +53,8 @@ segment URLs, and emits the concatenated bytes of each segment in order.
 3. Reads raw byte chunks from the source and writes each chunk into the sink.
 4. Emits `ProgressMetrics` (bytes, elapsed time, chunk count, bitrate) at
    `progressIntervalMs` cadence.
-5. Closes the sink and source when the stream ends, an error occurs, the
-   subscription is unsubscribed, or an `AbortSignal` fires.
+5. Closes the sink and source when the stream ends, an error occurs, or an
+   `AbortSignal` fires.
 
 The bytes flowing through are the platform's native live stream bytes (FLV or
 HLS transport-stream segments). The library is a pipe, not a media parser or
@@ -67,9 +71,9 @@ Both protocols are resolved into a single byte stream:
 - **HLS**: the platform returns an `.m3u8` playlist. `HlsSource` repeatedly
   refreshes the playlist (for live streams), fetches each new `.ts` segment, and
   emits their bytes in playlist order. `record()` sees the same
-  `Observable<Uint8Array>` as FLV, so a file sink also produces one continuous
-  file — but the bytes are MPEG-TS transport-stream segments concatenated
-  back-to-back, not a standalone `.mp4`.
+  `ReadableStream<Uint8Array>` as FLV, so a file sink also produces one
+  continuous file — but the bytes are MPEG-TS transport-stream segments
+  concatenated back-to-back, not a standalone `.mp4`.
 
 Because the bytes are the platform's native container, saving them directly
 usually means saving `.flv` or `.ts` files. If downstream tools need `.mp4`,
@@ -82,34 +86,51 @@ runtime-agnostic and small.
 ```ts
 import { record } from "@stream-fetcher/core";
 
-const subscription = record(
-  source$, // Observable<Uint8Array>
+const progressStream = record(
+  sourceStream, // ReadableStream<Uint8Array>
   sink, // Sink
   sinkOptions, // sink-specific options
   { progressIntervalMs: 1000 },
-).subscribe({
-  next: (metrics) => {
-    console.log(
-      `${metrics.bytes} bytes, ${metrics.bitrateKbps.toFixed(1)} kbps`,
-    );
-  },
-  error: (err) => console.error("Recording failed", err),
-  complete: () => console.log("Recording finished"),
-});
+);
 
-// Stop at any time:
-setTimeout(() => subscription.unsubscribe(), 30000);
+for await (const metrics of progressStream) {
+  console.log(
+    `${metrics.bytes} bytes, ${metrics.bitrateKbps.toFixed(1)} kbps`,
+  );
+}
 ```
 
 You can also pass an `AbortSignal` to stop the recording externally:
 
 ```ts
 const controller = new AbortController();
-record(source$, sink, sinkOptions, { signal: controller.signal }).subscribe({
-  next: (metrics) => console.log(metrics),
-  error: (err) => console.error(err),
-});
+const progressStream = record(
+  sourceStream,
+  sink,
+  sinkOptions,
+  { signal: controller.signal },
+);
 controller.abort(); // stops recording
+```
+
+### Effect variant
+
+For typed errors and functional composition, use the Effect variants:
+
+```ts
+import { Effect, Stream } from "effect";
+import { recordEffect } from "@stream-fetcher/core";
+
+const program = recordEffect(
+  sourceStream, // Stream.Stream<Uint8Array, Error, never>
+  effectSink, // EffectSink
+  sinkOptions,
+  { progressIntervalMs: 1000 },
+);
+
+Effect.runPromise(Stream.runCollect(program)).then((metrics) => {
+  console.log(metrics);
+});
 ```
 
 ### Saving to files
@@ -123,11 +144,16 @@ import { createDenoFileSystem } from "@stream-fetcher/core/adapters/deno";
 
 const fs = createDenoFileSystem();
 
-record(
-  source$, // e.g. from HttpSource.open() or HlsSource.open()
+const stream = await source.open(sourceOptions);
+const progressStream = record(
+  stream, // e.g. from HttpSource.open() or HlsSource.open()
   new FileSink(), // sink
   { path: "./stream.flv", fs }, // sink options
-).subscribe();
+);
+
+for await (const _ of progressStream) {
+  // progress events
+}
 ```
 
 For HLS this writes a single concatenated `.ts` file, not an `.mp4`. Remux to
@@ -143,6 +169,11 @@ need generated timestamps:
 ```sh
 ffmpeg -fflags +genpts -i stream.ts -c copy stream.mp4
 ```
+
+A single concatenated `.ts` file can usually be read by FFmpeg because each
+MPEG-TS segment is self-contained and carries its own timing information. The
+`.m3u8` text only adds playlist metadata (segment durations and order); the
+actual media bytes are in the `.ts` segments.
 
 ### Why only one sink?
 

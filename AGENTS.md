@@ -8,15 +8,18 @@ conventions change.
 - **SOLID principles**: small, single-responsibility interfaces; platform
   details isolated from core; users depend on abstractions (`Source`, `Sink`,
   `Resolver`), not concrete implementations.
-- **RxJS as the standard reactive interface**: use RxJS `Observable` for all
-  async/reactive flows, including public APIs and internal implementations.
-  `Source` emits `Observable<Uint8Array>`; `Sink` and `FileSystem` accept
-  `Observable<Uint8Array>` and return `Observable<void>`. Convert to Web Streams
-  only at runtime boundaries when required.
+- **Web-standard interfaces**: `Source` returns
+  `Promise<ReadableStream<Uint8Array>>`, `Sink` and `FileSystem` accept
+  `ReadableStream<Uint8Array>` and return `Promise<void>`. Keep the core
+  portable and runtime-agnostic.
+- **Effect as the functional layer**: use `effect-ts` for typed error handling,
+  complex request orchestration, and stream composition. Provide Effect variants
+  (`EffectSource`, `EffectSink`, `EffectFileSystem`) alongside web-standard
+  interfaces via adapters in `packages/core/src/adapters/effect.ts`.
 - **Runtime-agnostic core**: no Deno-specific APIs in core. Runtime adapters
   provide file-system access.
 - **Minimal external runtime deps in core**: only widely-adopted, portable
-  libraries (e.g., RxJS) may be core dependencies; avoid platform-specific or
+  libraries (e.g., Effect) may be core dependencies; avoid platform-specific or
   niche packages.
 - **Tests** cover each package independently; a broken platform resolver must
   not block core CI.
@@ -24,8 +27,8 @@ conventions change.
 ## Dependency Policy
 
 - Prefer npm packages over JSR-specific modules to avoid vendor lock-in to Deno.
-- RxJS is a core runtime dependency; use it as the standard reactive interface
-  for both public APIs and internal flows.
+- Effect is a core runtime dependency; use it as the functional/error-handling
+  layer and for internal stream composition.
 - Pin dependency versions in `deno.json` import maps.
 
 ## Resolver Conventions

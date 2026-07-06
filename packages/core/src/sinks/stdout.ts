@@ -1,25 +1,28 @@
-import type { Sink } from "@stream-fetcher/core/types";
-import { Observable } from "rxjs";
+import { Effect, Stream } from "effect";
+import type { EffectSink, Sink } from "@stream-fetcher/core/types";
 
-/** Writes the Observable's chunks to Deno's stdout. */
+/** Writes the byte stream to Deno's stdout. */
 export class StdoutSink implements Sink<undefined> {
   readonly name = "stdout";
 
-  write(source$: Observable<Uint8Array>): Observable<void> {
-    return new Observable<void>((subscriber) => {
-      const writer = Deno.stdout.writable.getWriter();
-      const subscription = source$.subscribe({
-        next: (chunk) => writer.write(chunk),
-        error: (err) => {
-          writer.abort(err).catch(() => {});
-          subscriber.error(err);
-        },
-        complete: () => {
-          writer.releaseLock();
-          subscriber.complete();
-        },
+  async write(stream: ReadableStream<Uint8Array>): Promise<void> {
+    await stream.pipeTo(Deno.stdout.writable);
+  }
+}
+
+/** Effect-based stdout sink. */
+export class StdoutEffectSink implements EffectSink<undefined> {
+  readonly name = "stdout";
+
+  write(
+    stream: Stream.Stream<Uint8Array, Error, never>,
+  ): Effect.Effect<void, Error, never> {
+    return Effect.gen(function* () {
+      const readable = yield* Stream.toReadableStreamEffect(stream);
+      yield* Effect.tryPromise({
+        try: () => readable.pipeTo(Deno.stdout.writable),
+        catch: (err) => new Error(String(err)),
       });
-      subscriber.add(() => subscription.unsubscribe());
     });
   }
 }
