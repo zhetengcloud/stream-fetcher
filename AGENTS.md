@@ -60,3 +60,12 @@ conventions change.
 - Run `deno fmt` before committing to ensure consistent formatting.
 - Treat lint and format failures as CI failures; always check them alongside
   tests.
+
+## Git Workflow
+
+- **Do not commit without explicit user permission.** Wait for a clear "commit"
+  instruction before running `git commit`.
+- **Always create a new branch for new work.** Do not commit directly on `main`.
+  Use a descriptive branch name (e.g. `refactor-huya-resolver`, `fix-s3-abort`).
+- **Fast-forward merge only.** When merging to `main`, use `git merge --ff-only`
+  to keep history linear. No merge commits.
