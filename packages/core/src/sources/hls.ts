@@ -1,7 +1,45 @@
-import { Chunk, Effect, Option, Stream } from "effect";
+import { Chunk, Data, Effect, Option, Stream } from "effect";
 import type { EffectSource, Source } from "@stream-fetcher/core/types";
 import { toSource } from "@stream-fetcher/core/adapters/effect";
 import { messages } from "@stream-fetcher/core/messages";
+
+class PlaylistRequestError
+  extends Data.TaggedError("PlaylistRequestError")<{ status: number }> {}
+
+class PlaylistTextError
+  extends Data.TaggedError("PlaylistTextError")<{ cause: unknown }> {}
+
+class PlaylistAbortedError extends Data.TaggedError("PlaylistAbortedError") {}
+
+class SegmentRequestError
+  extends Data.TaggedError("SegmentRequestError")<{ status: number }> {}
+
+type HlsError =
+  | PlaylistRequestError
+  | PlaylistTextError
+  | PlaylistAbortedError
+  | SegmentRequestError;
+
+function hlsErrorToError(err: HlsError): Error {
+  switch (err._tag) {
+    case "PlaylistRequestError":
+      return new Error(
+        `${messages.errors.hlsPlaylistRequestFailed}: ${err.status}`,
+      );
+    case "PlaylistTextError":
+      return err.cause instanceof Error
+        ? new Error(
+          `${messages.errors.hlsPlaylistTextReadFailed}: ${err.cause.message}`,
+        )
+        : new Error(messages.errors.hlsPlaylistTextReadFailed);
+    case "PlaylistAbortedError":
+      return new Error(messages.errors.hlsPlaylistRequestAborted);
+    case "SegmentRequestError":
+      return new Error(
+        `${messages.errors.hlsSegmentRequestFailed}: ${err.status}`,
+      );
+  }
+}
 
 /** Options for the HLS source. */
 export interface HlsSourceOptions {
@@ -93,15 +131,11 @@ export class HlsEffectSource implements EffectSource<HlsSourceOptions> {
             },
           ]);
         }).pipe(
-          Effect.catchAll((err: unknown) =>
-            isAbortError(err)
-              ? Effect.succeed(
-                Option.none<[Chunk.Chunk<Uint8Array>, PollState]>(),
-              )
-              : Effect.fail(
-                err instanceof Error ? err : new Error(String(err)),
-              )
-          ),
+          Effect.catchTag("PlaylistAbortedError", () =>
+            Effect.succeed(
+              Option.none<[Chunk.Chunk<Uint8Array>, PollState]>(),
+            )),
+          Effect.mapError(hlsErrorToError),
         ),
     );
   }
@@ -123,20 +157,31 @@ function fetchPlaylist(
   url: URL,
   headers: Record<string, string> | undefined,
   signal: AbortSignal,
-): Effect.Effect<ParsedPlaylist, Error, never> {
+): Effect.Effect<
+  ParsedPlaylist,
+  PlaylistRequestError | PlaylistTextError | PlaylistAbortedError,
+  never
+> {
   return Effect.tryPromise({
-    try: async () => {
-      const response = await fetch(url, { headers, signal });
-      if (!response.ok) {
-        throw new Error(
-          `${messages.errors.hlsPlaylistRequestFailed}: ${response.status}`,
-        );
-      }
-      return parsePlaylist(await response.text());
-    },
-    catch: (err: unknown) =>
-      err instanceof Error ? err : new Error(String(err)),
-  });
+    try: () => fetch(url, { headers, signal }),
+    catch: (err) =>
+      isAbortError(err)
+        ? new PlaylistAbortedError()
+        : new PlaylistRequestError({ status: 0 }),
+  }).pipe(
+    Effect.flatMap((response) =>
+      response.ok
+        ? Effect.succeed(response)
+        : Effect.fail(new PlaylistRequestError({ status: response.status }))
+    ),
+    Effect.flatMap((response) =>
+      Effect.tryPromise({
+        try: () => response.text(),
+        catch: (err) => new PlaylistTextError({ cause: err }),
+      })
+    ),
+    Effect.map(parsePlaylist),
+  );
 }
 
 function parsePlaylist(text: string): ParsedPlaylist {
@@ -161,19 +206,19 @@ function fetchSegment(
   url: string,
   headers: Record<string, string> | undefined,
   signal: AbortSignal,
-): Effect.Effect<Uint8Array, Error, never> {
+): Effect.Effect<Uint8Array, SegmentRequestError, never> {
   return Effect.tryPromise({
     try: async () => {
       const response = await fetch(url, { headers, signal });
       if (!response.ok) {
-        throw new Error(
-          `${messages.errors.hlsSegmentRequestFailed}: ${response.status}`,
-        );
+        throw new SegmentRequestError({ status: response.status });
       }
       return new Uint8Array(await response.arrayBuffer());
     },
-    catch: (err: unknown) =>
-      err instanceof Error ? err : new Error(String(err)),
+    catch: (err) =>
+      err instanceof SegmentRequestError
+        ? err
+        : new SegmentRequestError({ status: 0 }),
   });
 }
 
@@ -188,7 +233,7 @@ function addAll(
   return next;
 }
 
-function isAbortError(err: unknown): boolean {
+function isAbortError(err: unknown): err is DOMException {
   return err instanceof DOMException && err.name === "AbortError";
 }
 

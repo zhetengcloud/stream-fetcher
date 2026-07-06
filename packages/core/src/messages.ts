@@ -8,6 +8,8 @@ export const messages = {
     httpRequestFailed: "HTTP request failed",
     responseBodyIsNull: "Response body is null",
     hlsPlaylistRequestFailed: "HLS playlist request failed",
+    hlsPlaylistTextReadFailed: "Failed to read HLS playlist response text",
+    hlsPlaylistRequestAborted: "HLS playlist request was aborted",
     hlsSegmentRequestFailed: "HLS segment request failed",
     s3CreateMultipartUploadFailed: "S3 multipart upload creation failed",
     s3UploadIdNotFound: "UploadId not found in response",
