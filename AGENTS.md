@@ -8,14 +8,11 @@ conventions change.
 - **SOLID principles**: small, single-responsibility interfaces; platform
   details isolated from core; users depend on abstractions (`Source`, `Sink`,
   `Resolver`), not concrete implementations.
-- **Web-standard interfaces**: `Source` returns
-  `Promise<ReadableStream<Uint8Array>>`, `Sink` and `FileSystem` accept
-  `ReadableStream<Uint8Array>` and return `Promise<void>`. Keep the core
-  portable and runtime-agnostic.
-- **Effect as the functional layer**: use `effect-ts` for typed error handling,
-  complex request orchestration, and stream composition. Provide Effect variants
-  (`EffectSource`, `EffectSink`, `EffectFileSystem`) alongside web-standard
-  interfaces via adapters in `packages/core/src/adapters/effect.ts`.
+- **Effect-TS interfaces**: `Source` returns
+  `Stream.Stream<Uint8Array, Error, never>`, `Sink` and `FileSystem` accept
+  `Stream.Stream<Uint8Array, Error, never>` and return
+  `Effect.Effect<void, Error, never>`. The core is built on Effect-TS for typed
+  errors and functional stream composition.
 - **Runtime-agnostic core**: no Deno-specific APIs in core. Runtime adapters
   provide file-system access.
 - **Minimal external runtime deps in core**: only widely-adopted, portable

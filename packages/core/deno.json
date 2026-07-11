@@ -12,8 +12,7 @@
     "./sinks/stdout": "./src/sinks/stdout.ts",
     "./sinks/s3": "./src/sinks/s3.ts",
     "./utils/s3_sign": "./src/utils/s3_sign.ts",
-    "./adapters/deno": "./src/adapters/deno.ts",
-    "./adapters/effect": "./src/adapters/effect.ts"
+    "./adapters/deno": "./src/adapters/deno.ts"
   },
   "tasks": {
     "test": "deno test --allow-all"

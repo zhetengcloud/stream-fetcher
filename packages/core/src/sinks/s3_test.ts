@@ -1,4 +1,5 @@
 import { assertEquals, assertExists } from "@std/assert";
+import { Effect, Stream } from "effect";
 import { S3Sink } from "@stream-fetcher/core/sinks/s3";
 
 interface CapturedRequest {
@@ -30,7 +31,7 @@ function createMockS3Server(): {
 
         if (url.searchParams.has("uploads")) {
           return new Response(
-            `?<?xml version="1.0" encoding="UTF-8"?><InitiateMultipartUploadResult><UploadId>test-upload-id</UploadId></InitiateMultipartUploadResult>`,
+            `?<?xml version="1.0" encoding="UTF-8"?><InitiateMultipartUploadResult><UploadId>test-upload-id<\/UploadId><\/InitiateMultipartUploadResult>`,
             { headers: { "Content-Type": "application/xml" } },
           );
         }
@@ -44,7 +45,7 @@ function createMockS3Server(): {
 
         if (url.searchParams.has("uploadId")) {
           return new Response(
-            `?<?xml version="1.0" encoding="UTF-8"?><CompleteMultipartUploadResult><Location>http://mock/object.ts</Location></CompleteMultipartUploadResult>`,
+            `?<?xml version="1.0" encoding="UTF-8"?><CompleteMultipartUploadResult><Location>http://mock/object.ts<\/Location><\/CompleteMultipartUploadResult>`,
             { headers: { "Content-Type": "application/xml" } },
           );
         }
@@ -66,15 +67,10 @@ function createMockS3Server(): {
   };
 }
 
-function byteStream(chunks: Uint8Array[]): ReadableStream<Uint8Array> {
-  return new ReadableStream({
-    start(controller) {
-      for (const chunk of chunks) {
-        controller.enqueue(chunk);
-      }
-      controller.close();
-    },
-  });
+function byteStream(
+  chunks: Uint8Array[],
+): Stream.Stream<Uint8Array, Error, never> {
+  return Stream.fromIterable(chunks);
 }
 
 Deno.test("S3Sink performs multipart upload to a mock S3 server", async () => {
@@ -88,7 +84,7 @@ Deno.test("S3Sink performs multipart upload to a mock S3 server", async () => {
       new TextEncoder().encode("abcdefghij"),
     ]);
 
-    await sink.write(source, {
+    await Effect.runPromise(sink.write(source, {
       endpoint: url,
       bucket: "test-bucket",
       key: "stream.ts",
@@ -96,7 +92,7 @@ Deno.test("S3Sink performs multipart upload to a mock S3 server", async () => {
       secretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
       region: "us-east-1",
       partSize: 10,
-    });
+    }));
 
     const initiate = requests.find((r) => r.url.includes("uploads="));
     assertExists(initiate);

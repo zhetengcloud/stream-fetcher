@@ -1,5 +1,5 @@
 import { Effect, Stream } from "effect";
-import type { EffectSource, Source } from "@stream-fetcher/core/types";
+import type { Source } from "@stream-fetcher/core/types";
 import { messages } from "@stream-fetcher/core/messages";
 
 /** Options for the generic HTTP(S) source. */
@@ -9,8 +9,8 @@ export interface HttpSourceOptions {
   signal?: AbortSignal;
 }
 
-/** Fetches a raw HTTP(S) stream and exposes it as an EffectSource. */
-export class HttpEffectSource implements EffectSource<HttpSourceOptions> {
+/** Fetches a raw HTTP(S) stream and exposes it as a Source. */
+export class HttpSource implements Source<HttpSourceOptions> {
   readonly name = "http";
 
   open(options: HttpSourceOptions): Stream.Stream<Uint8Array, Error, never> {
@@ -21,18 +21,6 @@ export class HttpEffectSource implements EffectSource<HttpSourceOptions> {
           (err) => err instanceof Error ? err : new Error(String(err)),
         )
       ),
-    );
-  }
-}
-
-/** Fetches a raw HTTP(S) stream and exposes it as a Source. */
-export class HttpSource implements Source<HttpSourceOptions> {
-  readonly name = "http";
-  readonly #effectSource = new HttpEffectSource();
-
-  open(options: HttpSourceOptions): Promise<ReadableStream<Uint8Array>> {
-    return Effect.runPromise(
-      Stream.toReadableStreamEffect(this.#effectSource.open(options)),
     );
   }
 }

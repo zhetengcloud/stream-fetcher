@@ -1,4 +1,5 @@
 import { assertEquals, assertExists } from "@std/assert";
+import { Effect } from "effect";
 import { HuyaProtocol, HuyaResolver } from "@stream-fetcher/huya";
 import { messages } from "@stream-fetcher/huya/messages";
 
@@ -23,17 +24,17 @@ var hyPlayerConfig = {
         "iWebPriorityRate": 100,
         "sFlvUrl": "http://flv.example.com",
         "sFlvUrlSuffix": "flv",
-        "sFlvAntiCode": "fm=QkctYzVidGlfMjQ2NzIyMDVfNzIyODJfMTY4MTgwMTYxMHgtNzQ5Mzk3NjI0LTEgMSAxIDEgMSAxIDEgMSAx&ctype=huya_live&fs=bgct&t=100&wsTime=66666666",
+        "sFlvAntiCode": "fm=QkctYzVidGlfMjQ2NzIyMDVfNzIyODJfMTY4MTgwMTYxMHgtNzQ5Mzk3NjI0LTEgMSAxIDEgMSAxIDEgMSAx\u0026ctype=huya_live\u0026fs=bgct\u0026t=100\u0026wsTime=66666666",
         "sHlsUrl": "http://hls.example.com",
         "sHlsUrlSuffix": "m3u8",
-        "sHlsAntiCode": "fm=QkctYzVidGlfMjQ2NzIyMDVfNzIyODJfMTY4MTgwMTYxMHgtNzQ5Mzk3NjI0LTEgMSAxIDEgMSAxIDEgMSAx&ctype=huya_live&fs=bgct&t=100&wsTime=66666666"
+        "sHlsAntiCode": "fm=QkctYzVidGlfMjQ2NzIyMDVfNzIyODJfMTY4MTgwMTYxMHgtNzQ5Mzk3NjI0LTEgMSAxIDEgMSAxIDEgMSAx\u0026ctype=huya_live\u0026fs=bgct\u0026t=100\u0026wsTime=66666666"
       }, {
         "sStreamName": "test-stream2",
         "sCdnType": "HW",
         "iWebPriorityRate": 50,
         "sFlvUrl": "http://flv2.example.com",
         "sFlvUrlSuffix": "flv",
-        "sFlvAntiCode": "fm=QkctYzVidGlfMjQ2NzIyMDVfNzIyODJfMTY4MTgwMTYxMHgtNzQ5Mzk3NjI0LTEgMSAxIDEgMSAxIDEgMSAx&ctype=huya_live&fs=bgct&t=100&wsTime=66666666"
+        "sFlvAntiCode": "fm=QkctYzVidGlfMjQ2NzIyMDVfNzIyODJfMTY4MTgwMTYxMHgtNzQ5Mzk3NjI0LTEgMSAxIDEgMSAxIDEgMSAx\u0026ctype=huya_live\u0026fs=bgct\u0026t=100\u0026wsTime=66666666"
       }]
     }],
     "vMultiStreamInfo": [
@@ -64,10 +65,12 @@ Deno.test("HuyaResolver resolves a room URL into a Source", async () => {
   const port = (server.addr as Deno.NetAddr).port;
 
   try {
-    const resolved = await resolver.resolve(`https://www.huya.com/testroom`, {
-      protocol: HuyaProtocol.Flv,
-      _webBase: `http://localhost:${port}`,
-    });
+    const resolved = await Effect.runPromise(
+      resolver.resolve(`https://www.huya.com/testroom`, {
+        protocol: HuyaProtocol.Flv,
+        _webBase: `http://localhost:${port}`,
+      }),
+    );
 
     assertEquals(resolved.source.name, "huya");
     assertExists(resolved.source.open);
@@ -107,11 +110,13 @@ Deno.test("HuyaResolver prefers selected CDN", async () => {
   const port = (server.addr as Deno.NetAddr).port;
 
   try {
-    const resolved = await resolver.resolve(`https://www.huya.com/testroom`, {
-      protocol: HuyaProtocol.Flv,
-      cdn: "HW",
-      _webBase: `http://localhost:${port}`,
-    });
+    const resolved = await Effect.runPromise(
+      resolver.resolve(`https://www.huya.com/testroom`, {
+        protocol: HuyaProtocol.Flv,
+        cdn: "HW",
+        _webBase: `http://localhost:${port}`,
+      }),
+    );
 
     // The resolver should select the HW CDN over the higher-priority TX CDN.
     assertEquals(resolved.source.name, "huya");
@@ -145,9 +150,11 @@ Deno.test("HuyaResolver rejects offline rooms", async () => {
   try {
     let caught = false;
     try {
-      await resolver.resolve(`https://www.huya.com/offline`, {
-        _webBase: `http://localhost:${port}`,
-      });
+      await Effect.runPromise(
+        resolver.resolve(`https://www.huya.com/offline`, {
+          _webBase: `http://localhost:${port}`,
+        }),
+      );
     } catch (err) {
       caught = true;
       assertEquals(
@@ -181,7 +188,7 @@ Deno.test("HuyaResolver rejects replays", async () => {
                 "iWebPriorityRate":100,
                 "sFlvUrl":"http://flv.example.com",
                 "sFlvUrlSuffix":"flv",
-                "sFlvAntiCode":"fm=bgct&ctype=huya_live&t=100&wsTime=66666666"
+                "sFlvAntiCode":"fm=bgct\u0026ctype=huya_live\u0026t=100\u0026wsTime=66666666"
               }]
             }],
             "vMultiStreamInfo":[{"iBitRate":10000}]
@@ -200,9 +207,11 @@ Deno.test("HuyaResolver rejects replays", async () => {
   try {
     let caught = false;
     try {
-      await resolver.resolve(`https://www.huya.com/replay`, {
-        _webBase: `http://localhost:${port}`,
-      });
+      await Effect.runPromise(
+        resolver.resolve(`https://www.huya.com/replay`, {
+          _webBase: `http://localhost:${port}`,
+        }),
+      );
     } catch (err) {
       caught = true;
       assertEquals(

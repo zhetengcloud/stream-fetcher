@@ -1,4 +1,5 @@
 import { assertEquals } from "@std/assert";
+import { Effect, Stream } from "effect";
 import { FileSink } from "@stream-fetcher/core";
 import type { FileSystem } from "@stream-fetcher/core";
 
@@ -9,47 +10,38 @@ function createInMemoryFs(): {
   const files = new Map<string, Uint8Array>();
 
   const fs: FileSystem = {
-    async write(
+    write(
       path: string,
-      stream: ReadableStream<Uint8Array>,
-    ): Promise<void> {
-      const reader = stream.getReader();
-      const chunks: Uint8Array[] = [];
-      try {
-        while (true) {
-          const result = await reader.read();
-          if (result.done) break;
-          chunks.push(result.value.slice());
-        }
-      } finally {
-        reader.releaseLock();
-      }
-      const total = chunks.reduce((acc, c) => acc + c.length, 0);
-      const merged = new Uint8Array(total);
-      let offset = 0;
-      for (const c of chunks) {
-        merged.set(c, offset);
-        offset += c.length;
-      }
-      files.set(path, merged);
+      stream: Stream.Stream<Uint8Array, Error, never>,
+    ): Effect.Effect<void, Error, never> {
+      return stream.pipe(
+        Stream.runCollect,
+        Effect.map((chunk) => Array.from(chunk)),
+        Effect.map((chunks) => {
+          const total = chunks.reduce((acc, c) => acc + c.length, 0);
+          const merged = new Uint8Array(total);
+          let offset = 0;
+          for (const c of chunks) {
+            merged.set(c, offset);
+            offset += c.length;
+          }
+          files.set(path, merged);
+        }),
+        Effect.map(() => undefined),
+      );
     },
-    async mkdir(): Promise<void> {
-      // no-op for in-memory fs
+    mkdir(): Effect.Effect<void, Error, never> {
+      return Effect.void;
     },
   };
 
   return { fs, files };
 }
 
-function byteStream(chunks: Uint8Array[]): ReadableStream<Uint8Array> {
-  return new ReadableStream({
-    start(controller) {
-      for (const chunk of chunks) {
-        controller.enqueue(chunk);
-      }
-      controller.close();
-    },
-  });
+function byteStream(
+  chunks: Uint8Array[],
+): Stream.Stream<Uint8Array, Error, never> {
+  return Stream.fromIterable(chunks);
 }
 
 Deno.test("FileSink writes chunks through the supplied FileSystem", async () => {
@@ -61,7 +53,7 @@ Deno.test("FileSink writes chunks through the supplied FileSystem", async () => 
     new TextEncoder().encode("world"),
   ]);
 
-  await sink.write(source, { path: "/tmp/foo.bin", fs });
+  await Effect.runPromise(sink.write(source, { path: "/tmp/foo.bin", fs }));
 
   assertEquals(
     new TextDecoder().decode(files.get("/tmp/foo.bin")),

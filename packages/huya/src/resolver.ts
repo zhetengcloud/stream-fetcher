@@ -1,8 +1,5 @@
 import { Effect } from "effect";
-import type {
-  EffectResolver,
-  ResolvedStream,
-} from "@stream-fetcher/core/types";
+import type { ResolvedStream, Resolver } from "@stream-fetcher/core/types";
 import { HlsSource } from "@stream-fetcher/core/sources/hls";
 import { HttpSource } from "@stream-fetcher/core/sources/http";
 import { messages } from "@stream-fetcher/huya/messages";
@@ -28,8 +25,8 @@ export interface HuyaResolverOptions {
   _webBase?: string;
 }
 
-/** Resolves Huya live room URLs into a ResolvedStream as an Effect. */
-export class HuyaEffectResolver implements EffectResolver<HuyaResolverOptions> {
+/** Resolves Huya live room URLs into a ResolvedStream. */
+export class HuyaResolver implements Resolver<HuyaResolverOptions> {
   readonly platform = messages.platform;
   readonly #roomPattern = /(?:https?:\/\/)?(?:www\.|m\.)?huya\.com\/([\w-]+)/;
 
@@ -113,36 +110,27 @@ export class HuyaEffectResolver implements EffectResolver<HuyaResolverOptions> {
         resolvedAt: new Date(),
       };
 
-      const source = isHls ? new HlsSource() : new HttpSource();
-      const sourceOptions = isHls
-        ? { playlistUrl: streamUrl, headers }
-        : { url: streamUrl, headers };
+      if (isHls) {
+        const source = new HlsSource();
+        return {
+          metadata,
+          source: {
+            name: messages.platform,
+            open: () => source.open({ playlistUrl: streamUrl, headers }),
+          },
+        };
+      }
 
+      const source = new HttpSource();
       return {
         metadata,
         source: {
           name: messages.platform,
-          open: () => source.open(sourceOptions as never),
+          open: () => source.open({ url: streamUrl, headers }),
         },
       };
     });
   }
 }
 
-const resolver = new HuyaEffectResolver();
-
-/** Resolves Huya live room URLs into a ResolvedStream. */
-export class HuyaResolver {
-  readonly platform = resolver.platform;
-
-  canHandle(url: string): boolean {
-    return resolver.canHandle(url);
-  }
-
-  resolve(
-    url: string,
-    options?: HuyaResolverOptions,
-  ): Promise<ResolvedStream> {
-    return Effect.runPromise(resolver.resolve(url, options));
-  }
-}
+const resolver = new HuyaResolver();

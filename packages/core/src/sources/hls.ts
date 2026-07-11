@@ -1,6 +1,5 @@
 import { Chunk, Data, Effect, Option, Stream } from "effect";
-import type { EffectSource, Source } from "@stream-fetcher/core/types";
-import { toSource } from "@stream-fetcher/core/adapters/effect";
+import type { Source } from "@stream-fetcher/core/types";
 import { messages } from "@stream-fetcher/core/messages";
 
 class PlaylistRequestError
@@ -66,7 +65,7 @@ export interface HlsSourceOptions {
  * source refreshes the playlist at `refreshIntervalMs` and fetches new segments
  * as they appear.
  */
-export class HlsEffectSource implements EffectSource<HlsSourceOptions> {
+export class HlsSource implements Source<HlsSourceOptions> {
   readonly name = "hls";
 
   open(options: HlsSourceOptions): Stream.Stream<Uint8Array, Error, never> {
@@ -137,18 +136,6 @@ export class HlsEffectSource implements EffectSource<HlsSourceOptions> {
             )),
           Effect.mapError(hlsErrorToError),
         ),
-    );
-  }
-}
-
-/** Web-standard HLS source. */
-export class HlsSource implements Source<HlsSourceOptions> {
-  readonly name = "hls";
-  readonly #effectSource = new HlsEffectSource();
-
-  open(options: HlsSourceOptions): Promise<ReadableStream<Uint8Array>> {
-    return Promise.resolve(
-      toSource(this.#effectSource).open(options),
     );
   }
 }

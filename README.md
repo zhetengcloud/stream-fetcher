@@ -10,7 +10,7 @@ Inspired by [Streamlink](https://github.com/streamlink/streamlink) and
 
 Provide a small, composable core for live stream recording in server-side /
 microservice / Kubernetes environments. No CLI, no UI — just sources, sinks, and
-a `record()` function.
+a `record()` function built on Effect-TS.
 
 ## Status
 
@@ -19,16 +19,15 @@ for architecture and milestones.
 
 ## How It Works
 
-The library is built around three small abstractions:
+The library is built around three small Effect-TS abstractions:
 
-- `Source` — produces a `ReadableStream<Uint8Array>` of the live stream's raw
-  bytes (FLV, HLS transport stream, etc.). It does not decode video or audio.
-- `Sink` — consumes a `ReadableStream<Uint8Array>` and writes it somewhere
-  (file, S3/OSS, stdout, a message bus, etc.).
-- `record()` — wires one `Source` to one `Sink` and pumps the raw bytes through.
-
-There are also Effect-based variants (`EffectSource`, `EffectSink`,
-`recordEffect()`) for typed error handling and functional stream composition.
+- `Source` — produces a `Stream.Stream<Uint8Array, Error, never>` of the live
+  stream's raw bytes (FLV, HLS transport stream, etc.). It does not decode video
+  or audio.
+- `Sink` — consumes a `Stream.Stream<Uint8Array, Error, never>` and writes it
+  somewhere (file, S3/OSS, stdout, a message bus, etc.).
+- `record()` — wires one `Source` to one `Sink` and pumps the raw bytes through,
+  returning a stream of progress metrics.
 
 ### Fetching and piping
 
@@ -49,12 +48,11 @@ segment URLs, and emits the concatenated bytes of each segment in order.
 `record()` then:
 
 1. Opens the source stream.
-2. Opens the sink's writable stream.
+2. Runs the sink's write Effect.
 3. Reads raw byte chunks from the source and writes each chunk into the sink.
 4. Emits `ProgressMetrics` (bytes, elapsed time, chunk count, bitrate) at
    `progressIntervalMs` cadence.
-5. Closes the sink and source when the stream ends, an error occurs, or an
-   `AbortSignal` fires.
+5. Stops when the stream ends, an error occurs, or an `AbortSignal` fires.
 
 The bytes flowing through are the platform's native live stream bytes (FLV or
 HLS transport-stream segments). The library is a pipe, not a media parser or
@@ -71,8 +69,8 @@ Both protocols are resolved into a single byte stream:
 - **HLS**: the platform returns an `.m3u8` playlist. `HlsSource` repeatedly
   refreshes the playlist (for live streams), fetches each new `.ts` segment, and
   emits their bytes in playlist order. `record()` sees the same
-  `ReadableStream<Uint8Array>` as FLV, so a file sink also produces one
-  continuous file — but the bytes are MPEG-TS transport-stream segments
+  `Stream.Stream<Uint8Array, Error, never>` as FLV, so a file sink also produces
+  one continuous file — but the bytes are MPEG-TS transport-stream segments
   concatenated back-to-back, not a standalone `.mp4`.
 
 Because the bytes are the platform's native container, saving them directly
@@ -84,27 +82,31 @@ runtime-agnostic and small.
 ### Usage
 
 ```ts
+import { Effect, Stream } from "effect";
 import { record } from "@stream-fetcher/core";
 
-const progressStream = record(
-  sourceStream, // ReadableStream<Uint8Array>
+const program = record(
+  sourceStream, // Stream.Stream<Uint8Array, Error, never>
   sink, // Sink
   sinkOptions, // sink-specific options
   { progressIntervalMs: 1000 },
 );
 
-for await (const metrics of progressStream) {
-  console.log(
-    `${metrics.bytes} bytes, ${metrics.bitrateKbps.toFixed(1)} kbps`,
-  );
-}
+await Effect.runPromise(
+  Stream.runForEach(program, (metrics) =>
+    Effect.sync(() => {
+      console.log(
+        `${metrics.bytes} bytes, ${metrics.bitrateKbps.toFixed(1)} kbps`,
+      );
+    })),
+);
 ```
 
 You can also pass an `AbortSignal` to stop the recording externally:
 
 ```ts
 const controller = new AbortController();
-const progressStream = record(
+const program = record(
   sourceStream,
   sink,
   sinkOptions,
@@ -113,47 +115,26 @@ const progressStream = record(
 controller.abort(); // stops recording
 ```
 
-### Effect variant
-
-For typed errors and functional composition, use the Effect variants:
-
-```ts
-import { Effect, Stream } from "effect";
-import { recordEffect } from "@stream-fetcher/core";
-
-const program = recordEffect(
-  sourceStream, // Stream.Stream<Uint8Array, Error, never>
-  effectSink, // EffectSink
-  sinkOptions,
-  { progressIntervalMs: 1000 },
-);
-
-Effect.runPromise(Stream.runCollect(program)).then((metrics) => {
-  console.log(metrics);
-});
-```
-
 ### Saving to files
 
 Use `FileSink` with the Deno file-system adapter to write the raw stream to a
 file. Choose the extension to match the source format:
 
 ```ts
+import { Effect, Stream } from "effect";
 import { FileSink } from "@stream-fetcher/core";
 import { createDenoFileSystem } from "@stream-fetcher/core/adapters/deno";
 
 const fs = createDenoFileSystem();
 
-const stream = await source.open(sourceOptions);
-const progressStream = record(
+const stream = source.open(sourceOptions); // Stream.Stream<Uint8Array, Error, never>
+const program = record(
   stream, // e.g. from HttpSource.open() or HlsSource.open()
   new FileSink(), // sink
   { path: "./stream.flv", fs }, // sink options
 );
 
-for await (const _ of progressStream) {
-  // progress events
-}
+await Effect.runPromise(Stream.runForEach(program, () => Effect.void));
 ```
 
 For HLS this writes a single concatenated `.ts` file, not an `.mp4`. Remux to

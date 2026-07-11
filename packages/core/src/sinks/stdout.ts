@@ -1,17 +1,8 @@
 import { Effect, Stream } from "effect";
-import type { EffectSink, Sink } from "@stream-fetcher/core/types";
+import type { Sink } from "@stream-fetcher/core/types";
 
 /** Writes the byte stream to Deno's stdout. */
 export class StdoutSink implements Sink<undefined> {
-  readonly name = "stdout";
-
-  async write(stream: ReadableStream<Uint8Array>): Promise<void> {
-    await stream.pipeTo(Deno.stdout.writable);
-  }
-}
-
-/** Effect-based stdout sink. */
-export class StdoutEffectSink implements EffectSink<undefined> {
   readonly name = "stdout";
 
   write(

@@ -1,7 +1,6 @@
 import { Effect, Ref, Stream } from "effect";
-import type { EffectSink, Sink } from "@stream-fetcher/core/types";
+import type { Sink } from "@stream-fetcher/core/types";
 import { signRequest } from "@stream-fetcher/core/utils/s3_sign";
-import { toSink } from "@stream-fetcher/core/adapters/effect";
 import { messages } from "@stream-fetcher/core/messages";
 
 export interface S3SinkOptions {
@@ -39,7 +38,7 @@ interface UploadState {
 }
 
 /** Uploads a byte stream to S3-compatible object storage using multipart upload. */
-export class S3EffectSink implements EffectSink<S3SinkOptions> {
+export class S3Sink implements Sink<S3SinkOptions> {
   readonly name = "s3";
 
   write(
@@ -48,19 +47,6 @@ export class S3EffectSink implements EffectSink<S3SinkOptions> {
   ): Effect.Effect<void, Error, never> {
     const client = new S3MultipartClient(options);
     return client.write(stream);
-  }
-}
-
-/** Web-standard S3 sink. */
-export class S3Sink implements Sink<S3SinkOptions> {
-  readonly name = "s3";
-  readonly #effectSink = new S3EffectSink();
-
-  async write(
-    stream: ReadableStream<Uint8Array>,
-    options: S3SinkOptions,
-  ): Promise<void> {
-    await toSink(this.#effectSink).write(stream, options);
   }
 }
 
@@ -164,23 +150,19 @@ class S3MultipartClient {
       const uploadUrl = new URL(this.#objectUrl);
       uploadUrl.searchParams.set("uploads", "");
 
-      const headers = yield* Effect.tryPromise({
-        try: () =>
-          signRequest({
-            method: "POST",
-            url: uploadUrl,
-            headers: {
-              "x-amz-content-sha256":
-                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            },
-            body: new Uint8Array(0),
-            accessKeyId: this.#options.accessKeyId,
-            secretAccessKey: this.#options.secretAccessKey,
-            sessionToken: this.#options.sessionToken || undefined,
-            region: this.#options.region,
-            service: this.#options.service,
-          }),
-        catch: (err) => err instanceof Error ? err : new Error(String(err)),
+      const headers = yield* signRequest({
+        method: "POST",
+        url: uploadUrl,
+        headers: {
+          "x-amz-content-sha256":
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        },
+        body: new Uint8Array(0),
+        accessKeyId: this.#options.accessKeyId,
+        secretAccessKey: this.#options.secretAccessKey,
+        sessionToken: this.#options.sessionToken || undefined,
+        region: this.#options.region,
+        service: this.#options.service,
       });
 
       const response = yield* Effect.tryPromise({
@@ -224,20 +206,16 @@ class S3MultipartClient {
       partUrl.searchParams.set("uploadId", uploadId);
       partUrl.searchParams.set("partNumber", String(partNumber));
 
-      const headers = yield* Effect.tryPromise({
-        try: () =>
-          signRequest({
-            method: "PUT",
-            url: partUrl,
-            headers: {},
-            body,
-            accessKeyId: this.#options.accessKeyId,
-            secretAccessKey: this.#options.secretAccessKey,
-            sessionToken: this.#options.sessionToken || undefined,
-            region: this.#options.region,
-            service: this.#options.service,
-          }),
-        catch: (err) => err instanceof Error ? err : new Error(String(err)),
+      const headers = yield* signRequest({
+        method: "PUT",
+        url: partUrl,
+        headers: {},
+        body,
+        accessKeyId: this.#options.accessKeyId,
+        secretAccessKey: this.#options.secretAccessKey,
+        sessionToken: this.#options.sessionToken || undefined,
+        region: this.#options.region,
+        service: this.#options.service,
       });
 
       const response = yield* Effect.tryPromise({
@@ -283,26 +261,22 @@ class S3MultipartClient {
           parts
             .map(
               (p) =>
-                `<Part><PartNumber>${p.PartNumber}</PartNumber><ETag>${p.ETag}</ETag></Part>`,
+                `<Part><PartNumber>${p.PartNumber}<\/PartNumber><ETag>${p.ETag}<\/ETag><\/Part>`,
             )
             .join("") +
-          `</CompleteMultipartUpload>`,
+          `<\/CompleteMultipartUpload>`,
       );
 
-      const headers = yield* Effect.tryPromise({
-        try: () =>
-          signRequest({
-            method: "POST",
-            url: completeUrl,
-            headers: { "Content-Type": "application/xml" },
-            body,
-            accessKeyId: this.#options.accessKeyId,
-            secretAccessKey: this.#options.secretAccessKey,
-            sessionToken: this.#options.sessionToken || undefined,
-            region: this.#options.region,
-            service: this.#options.service,
-          }),
-        catch: (err) => err instanceof Error ? err : new Error(String(err)),
+      const headers = yield* signRequest({
+        method: "POST",
+        url: completeUrl,
+        headers: { "Content-Type": "application/xml" },
+        body,
+        accessKeyId: this.#options.accessKeyId,
+        secretAccessKey: this.#options.secretAccessKey,
+        sessionToken: this.#options.sessionToken || undefined,
+        region: this.#options.region,
+        service: this.#options.service,
       });
 
       const response = yield* Effect.tryPromise({
@@ -332,20 +306,16 @@ class S3MultipartClient {
       const abortUrl = new URL(this.#objectUrl);
       abortUrl.searchParams.set("uploadId", uploadId);
 
-      const headers = yield* Effect.tryPromise({
-        try: () =>
-          signRequest({
-            method: "DELETE",
-            url: abortUrl,
-            headers: {},
-            body: new Uint8Array(0),
-            accessKeyId: this.#options.accessKeyId,
-            secretAccessKey: this.#options.secretAccessKey,
-            sessionToken: this.#options.sessionToken || undefined,
-            region: this.#options.region,
-            service: this.#options.service,
-          }),
-        catch: (err) => err instanceof Error ? err : new Error(String(err)),
+      const headers = yield* signRequest({
+        method: "DELETE",
+        url: abortUrl,
+        headers: {},
+        body: new Uint8Array(0),
+        accessKeyId: this.#options.accessKeyId,
+        secretAccessKey: this.#options.secretAccessKey,
+        sessionToken: this.#options.sessionToken || undefined,
+        region: this.#options.region,
+        service: this.#options.service,
       });
 
       yield* Effect.tryPromise({

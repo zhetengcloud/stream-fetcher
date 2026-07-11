@@ -1,8 +1,8 @@
 import { Effect, Stream } from "effect";
-import type { EffectFileSystem, FileSystem } from "@stream-fetcher/core/types";
+import type { FileSystem } from "@stream-fetcher/core/types";
 
-/** Creates an EffectFileSystem adapter backed by Deno APIs. */
-export function createDenoEffectFileSystem(): EffectFileSystem {
+/** Creates a FileSystem adapter backed by Deno APIs. */
+export function createDenoFileSystem(): FileSystem {
   return {
     write(path: string, stream: Stream.Stream<Uint8Array, Error, never>) {
       return Effect.gen(function* () {
@@ -26,26 +26,6 @@ export function createDenoEffectFileSystem(): EffectFileSystem {
     },
     mkdir(dir: string) {
       return Effect.promise(() => Deno.mkdir(dir, { recursive: true }));
-    },
-  };
-}
-
-/** Creates a FileSystem adapter backed by Deno APIs. */
-export function createDenoFileSystem(): FileSystem {
-  const effectFs = createDenoEffectFileSystem();
-  return {
-    async write(
-      path: string,
-      stream: ReadableStream<Uint8Array>,
-    ): Promise<void> {
-      const effectStream = Stream.fromReadableStream(
-        () => stream,
-        (err) => new Error(String(err)),
-      );
-      await Effect.runPromise(effectFs.write(path, effectStream));
-    },
-    async mkdir(dir: string): Promise<void> {
-      await Effect.runPromise(effectFs.mkdir(dir));
     },
   };
 }

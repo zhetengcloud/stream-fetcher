@@ -1,4 +1,5 @@
 import { assertEquals, assertExists } from "@std/assert";
+import { Effect } from "effect";
 import { BilibiliProtocol, BilibiliResolver } from "@stream-fetcher/bilibili";
 
 Deno.test("BilibiliResolver resolves a room URL into a Source", async () => {
@@ -22,11 +23,13 @@ Deno.test("BilibiliResolver resolves a room URL into a Source", async () => {
   const port = (server.addr as Deno.NetAddr).port;
 
   try {
-    const resolved = await resolver.resolve(`https://live.bilibili.com/12345`, {
-      qn: 10000,
-      protocol: BilibiliProtocol.Flv,
-      _apiBase: `http://localhost:${port}`,
-    });
+    const resolved = await Effect.runPromise(
+      resolver.resolve(`https://live.bilibili.com/12345`, {
+        qn: 10000,
+        protocol: BilibiliProtocol.Flv,
+        _apiBase: `http://localhost:${port}`,
+      }),
+    );
 
     assertEquals(resolved.source.name, "bilibili");
     assertExists(resolved.source.open);

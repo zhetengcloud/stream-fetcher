@@ -4,6 +4,8 @@
  * Reference: https://docs.aws.amazon.com/general/latest/gr/signature-version-4.html
  */
 
+import { Effect } from "effect";
+
 export interface SignRequestOptions {
   method: string;
   url: URL;
@@ -16,7 +18,16 @@ export interface SignRequestOptions {
   service: string;
 }
 
-export async function signRequest(
+export function signRequest(
+  options: SignRequestOptions,
+): Effect.Effect<Headers, Error, never> {
+  return Effect.tryPromise({
+    try: () => signRequestPromise(options),
+    catch: (err) => err instanceof Error ? err : new Error(String(err)),
+  });
+}
+
+async function signRequestPromise(
   options: SignRequestOptions,
 ): Promise<Headers> {
   const {

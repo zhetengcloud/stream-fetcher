@@ -21,29 +21,15 @@ References:
 ```ts
 interface Source<T = unknown> {
   readonly name: string;
-  open(options?: T): Promise<ReadableStream<Uint8Array>>;
-}
-
-interface EffectSource<T = unknown> {
-  readonly name: string;
   open(options?: T): Stream.Stream<Uint8Array, Error, never>;
 }
 
 interface Sink<T = unknown> {
   readonly name: string;
-  write(stream: ReadableStream<Uint8Array>, options?: T): Promise<void>;
-}
-
-interface EffectSink<T = unknown> {
-  readonly name: string;
   write(
     stream: Stream.Stream<Uint8Array, Error, never>,
     options?: T,
-  ): Effect.Effect<
-    void,
-    Error,
-    never
-  >;
+  ): Effect.Effect<void, Error, never>;
 }
 
 interface RecorderOptions {
@@ -53,15 +39,8 @@ interface RecorderOptions {
 }
 
 function record<K>(
-  source: ReadableStream<Uint8Array>,
-  sink: Sink<K>,
-  sinkOptions?: K,
-  options?: RecorderOptions,
-): ReadableStream<ProgressMetrics>;
-
-function recordEffect<K>(
   source: Stream.Stream<Uint8Array, Error, never>,
-  sink: EffectSink<K>,
+  sink: Sink<K>,
   sinkOptions?: K,
   options?: RecorderOptions,
 ): Stream.Stream<ProgressMetrics, Error, never>;
@@ -77,7 +56,10 @@ interface ProgressMetrics {
 interface Resolver<T = unknown> {
   readonly platform: string;
   canHandle(url: string): boolean;
-  resolve(url: string, options?: T): Promise<ResolvedStream>;
+  resolve(
+    url: string,
+    options?: T,
+  ): Effect.Effect<ResolvedStream, Error, never>;
 }
 ```
 
@@ -96,7 +78,6 @@ packages/
       sinks/s3.ts
       utils/s3_sign.ts
       adapters/deno.ts
-      adapters/effect.ts
   bilibili/           # @stream-fetcher/bilibili
   huya/               # @stream-fetcher/huya
   twitch/             # @stream-fetcher/twitch (on hold)
@@ -120,7 +101,7 @@ interface StreamDetector {
   waitForLive(
     source: Source,
     options: DetectorOptions,
-  ): Promise<ReadableStream<Uint8Array>>;
+  ): Stream.Stream<Uint8Array, Error, never>;
 }
 ```
 
@@ -141,5 +122,6 @@ The library is designed for microservices / Kubernetes, not an end-user CLI.
 | M3 | Workspace migration + Bilibili + Huya resolvers        | ✅ Done |
 | M4 | README + Effect integration + adapter helpers          | ✅ Done |
 | M5 | Extract platform strings to dedicated `messages.ts`    | ✅ Done |
+| M6 | Remove Promise-based APIs, adopt Effect-TS only        | ✅ Done |
 
 **On hold:** YouTube / Twitch resolvers.

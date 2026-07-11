@@ -1,8 +1,5 @@
 import { Effect } from "effect";
-import type {
-  EffectResolver,
-  ResolvedStream,
-} from "@stream-fetcher/core/types";
+import type { ResolvedStream, Resolver } from "@stream-fetcher/core/types";
 import { HlsSource } from "@stream-fetcher/core/sources/hls";
 import { HttpSource } from "@stream-fetcher/core/sources/http";
 import { messages } from "@stream-fetcher/bilibili/messages";
@@ -34,9 +31,8 @@ interface PlayUrlResponse {
   };
 }
 
-/** Resolves Bilibili live room URLs into a ResolvedStream as an Effect. */
-export class BilibiliEffectResolver
-  implements EffectResolver<BilibiliResolverOptions> {
+/** Resolves Bilibili live room URLs into a ResolvedStream. */
+export class BilibiliResolver implements Resolver<BilibiliResolverOptions> {
   readonly platform = messages.platform;
   readonly #roomPattern =
     /(?:https?:\/\/)?(?:www\.|m\.|live\.)?bilibili\.com\/(?:blanc\/|h5\/)?(\d+)/;
@@ -89,40 +85,30 @@ export class BilibiliEffectResolver
         resolvedAt: new Date(),
       };
 
-      const source = isHls ? new HlsSource() : new HttpSource();
+      if (isHls) {
+        const source = new HlsSource();
+        return {
+          metadata,
+          source: {
+            name: messages.platform,
+            open: () => source.open({ playlistUrl: streamUrl, headers }),
+          },
+        };
+      }
 
-      const sourceOptions = isHls
-        ? { playlistUrl: streamUrl, headers }
-        : { url: streamUrl, headers };
-
+      const source = new HttpSource();
       return {
         metadata,
         source: {
           name: messages.platform,
-          open: () => source.open(sourceOptions as never),
+          open: () => source.open({ url: streamUrl, headers }),
         },
       };
     });
   }
 }
 
-const resolver = new BilibiliEffectResolver();
-
-/** Resolves Bilibili live room URLs into a ResolvedStream. */
-export class BilibiliResolver {
-  readonly platform = resolver.platform;
-
-  canHandle(url: string): boolean {
-    return resolver.canHandle(url);
-  }
-
-  resolve(
-    url: string,
-    options?: BilibiliResolverOptions,
-  ): Promise<ResolvedStream> {
-    return Effect.runPromise(resolver.resolve(url, options));
-  }
-}
+const resolver = new BilibiliResolver();
 
 function fetchStreamUrl(
   roomId: string,

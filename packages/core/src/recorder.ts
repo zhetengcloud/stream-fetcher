@@ -1,12 +1,7 @@
 import { Effect, Fiber, Stream } from "effect";
-import type {
-  EffectSink,
-  Sink,
-  StreamMetadata,
-} from "@stream-fetcher/core/types";
-import { toEffectSink } from "@stream-fetcher/core/adapters/effect";
+import type { Sink, StreamMetadata } from "@stream-fetcher/core/types";
 
-/** Options for {@link record} and {@link recordEffect}. */
+/** Options for {@link record}. */
 export interface RecorderOptions {
   /** AbortSignal for stopping the recording. */
   signal?: AbortSignal;
@@ -26,39 +21,12 @@ export interface ProgressMetrics {
 }
 
 /**
- * Record a byte stream by piping it into a Sink.
- *
- * The returned ReadableStream emits {@link ProgressMetrics} at
- * `progressIntervalMs` cadence (default 1000ms), including an initial emit, and
- * closes when the sink finishes writing. Errors from the source stream or sink
- * error the progress stream. Cancelling the ReadableStream stops the recording.
- */
-export function record<K = unknown>(
-  source: ReadableStream<Uint8Array>,
-  sink: Sink<K>,
-  sinkOptions?: K,
-  options: RecorderOptions = {},
-): ReadableStream<ProgressMetrics> {
-  const source$ = Stream.fromReadableStream<Uint8Array, Error>(
-    () => source,
-    (err: unknown) => err instanceof Error ? err : new Error(String(err)),
-  );
-  const progress$ = recordEffect(
-    source$,
-    toEffectSink(sink),
-    sinkOptions,
-    options,
-  );
-  return Effect.runSync(Stream.toReadableStreamEffect(progress$));
-}
-
-/**
  * Effect-based recorder. Returns a stream of {@link ProgressMetrics} while
  * piping the source into the sink.
  */
-export function recordEffect<K = unknown>(
+export function record<K = unknown>(
   source: Stream.Stream<Uint8Array, Error, never>,
-  sink: EffectSink<K>,
+  sink: Sink<K>,
   sinkOptions?: K,
   options: RecorderOptions = {},
 ): Stream.Stream<ProgressMetrics, Error, never> {
