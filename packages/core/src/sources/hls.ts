@@ -36,9 +36,9 @@ export interface HlsSourceOptions {
  * Fetches an HLS playlist and emits the concatenated bytes of its segments as a
  * single stream.
  *
- * Supports VOD and live (sliding-window) playlists. For live playlists, the
- * source refreshes the playlist at `refreshIntervalMs` and fetches new segments
- * as they appear.
+ * Designed for live (sliding-window) playlists, which are refreshed at
+ * `refreshIntervalMs` to fetch new segments as they appear. Playlists that
+ * declare `#EXT-X-ENDLIST` are treated as finished and stop the stream.
  */
 export class HlsSource implements Source<HlsError, HlsSourceOptions> {
   readonly name = "hls";
@@ -51,67 +51,102 @@ export class HlsSource implements Source<HlsError, HlsSourceOptions> {
       messages.defaults.hlsRefreshIntervalMs;
     const maxRefreshCount = options.maxRefreshCount ?? Infinity;
 
+    // Tracks which segment URLs have already been emitted across playlist refreshes.
     const initialState: PollState = {
       fetched: new Set<string>(),
       isEndlist: false,
       refreshCount: 0,
     };
 
+    // Poll the playlist repeatedly, emitting a chunk of new segment bytes each step.
     return Stream.unfoldChunkEffect(
       initialState,
       (state) =>
-        Effect.gen(function* () {
-          if (signal.aborted || state.refreshCount > maxRefreshCount) {
-            return Option.none();
-          }
-
-          const playlistOption = yield* fetchPlaylist(baseUrl, headers, signal);
-          if (Option.isNone(playlistOption)) {
-            return Option.none();
-          }
-          const playlist = playlistOption.value;
-
-          const pending = segmentUrls(playlist, baseUrl).filter((url) =>
-            !state.fetched.has(url)
-          );
-          const fetched = addAll(state.fetched, pending);
-
-          if (pending.length === 0) {
-            if (playlist.isEndlist) {
-              return Option.none();
-            }
-            yield* Effect.sleep(refreshIntervalMs);
-            return Option.some<[Chunk.Chunk<Uint8Array>, PollState]>([
-              Chunk.empty<Uint8Array>(),
-              {
-                fetched,
-                isEndlist: false,
-                refreshCount: state.refreshCount + 1,
-              },
-            ]);
-          }
-
-          const chunks = yield* Effect.forEach(
-            pending,
-            (url) => fetchSegment(url, headers, signal),
-            { concurrency: 1 },
-          );
-
-          if (!playlist.isEndlist) {
-            yield* Effect.sleep(refreshIntervalMs);
-          }
-
-          return Option.some<[Chunk.Chunk<Uint8Array>, PollState]>([
-            Chunk.fromIterable(chunks),
-            {
-              fetched,
-              isEndlist: playlist.isEndlist,
-              refreshCount: state.refreshCount + 1,
-            },
-          ]);
-        }),
+        pollStep(
+          state,
+          baseUrl,
+          headers,
+          signal,
+          refreshIntervalMs,
+          maxRefreshCount,
+        ),
     );
   }
+}
+
+type PollStepEffect = Effect.Effect<
+  Option.Option<[Chunk.Chunk<Uint8Array>, PollState]>,
+  HlsError,
+  never
+>;
+
+// One iteration of the HLS polling loop. Returns Option.none() to end the stream
+// when the source is aborted, the playlist ends, or no new segments appear.
+function pollStep(
+  state: PollState,
+  baseUrl: URL,
+  headers: Record<string, string> | undefined,
+  signal: AbortSignal,
+  refreshIntervalMs: number,
+  maxRefreshCount: number,
+): PollStepEffect {
+  return Effect.gen(function* () {
+    // Stop polling when cancelled or the refresh budget is exhausted.
+    if (signal.aborted || state.refreshCount > maxRefreshCount) {
+      return Option.none();
+    }
+
+    // Fetch the playlist. None means the request was aborted, which ends the stream.
+    const playlistOption = yield* fetchPlaylist(baseUrl, headers, signal);
+    if (Option.isNone(playlistOption)) {
+      return Option.none();
+    }
+    const playlist = playlistOption.value;
+
+    // Resolve new segment URLs and remember them so live refreshes don't re-emit old segments.
+    const pending = segmentUrls(playlist, baseUrl).filter((url) =>
+      !state.fetched.has(url)
+    );
+    const fetched = new Set([...state.fetched, ...pending]);
+
+    // No new segments: a finalized playlist means the stream ended; otherwise wait
+    // for the next live refresh.
+    if (pending.length === 0) {
+      if (playlist.isEndlist) {
+        return Option.none();
+      }
+      yield* Effect.sleep(refreshIntervalMs);
+      return Option.some<[Chunk.Chunk<Uint8Array>, PollState]>([
+        Chunk.empty<Uint8Array>(),
+        {
+          fetched,
+          isEndlist: false,
+          refreshCount: state.refreshCount + 1,
+        },
+      ]);
+    }
+
+    // Download every new segment in playlist order and emit them as one chunk.
+    const chunks = yield* Effect.forEach(
+      pending,
+      (url) => fetchSegment(url, headers, signal),
+      { concurrency: 1 },
+    );
+
+    // Live playlists need a pause before the next refresh; VOD playlists end here.
+    if (!playlist.isEndlist) {
+      yield* Effect.sleep(refreshIntervalMs);
+    }
+
+    return Option.some<[Chunk.Chunk<Uint8Array>, PollState]>([
+      Chunk.fromIterable(chunks),
+      {
+        fetched,
+        isEndlist: playlist.isEndlist,
+        refreshCount: state.refreshCount + 1,
+      },
+    ]);
+  });
 }
 
 type FetchPlaylistEffect = Effect.Effect<
@@ -120,6 +155,8 @@ type FetchPlaylistEffect = Effect.Effect<
   never
 >;
 
+// Fetches and parses the playlist. Abortion is represented as Option.none();
+// actual HTTP/text failures become typed errors.
 function fetchPlaylist(
   url: URL,
   headers: Record<string, string> | undefined,
@@ -138,6 +175,7 @@ function fetchPlaylist(
       );
     }
 
+    // Playlist body is plain text (m3u8).
     const text = yield* Effect.tryPromise({
       try: () => response.text(),
       catch: (err) => new PlaylistTextError({ cause: err }),
@@ -153,6 +191,8 @@ type FetchResponseEffect = Effect.Effect<
   never
 >;
 
+// Fetches the playlist HTTP response. Abortion is mapped to Option.none() so it
+// can terminate the stream without being treated as a failure.
 function fetchResponse(
   url: URL,
   headers: Record<string, string> | undefined,
@@ -172,6 +212,7 @@ function fetchResponse(
   );
 }
 
+// Parses an m3u8 playlist into the endlist flag and the list of segment lines.
 function parsePlaylist(text: string): ParsedPlaylist {
   const lines = text.split(/\r?\n/);
   const isEndlist = lines.some((line) => line.trim() === "#EXT-X-ENDLIST");
@@ -182,6 +223,8 @@ function parsePlaylist(text: string): ParsedPlaylist {
   return { isEndlist, segmentLines };
 }
 
+// Resolves segment lines against the playlist base URL, handling both relative
+// and absolute segment URLs.
 function segmentUrls(playlist: ParsedPlaylist, baseUrl: URL): string[] {
   return playlist.segmentLines.map((line) => resolveUrl(line, baseUrl).href);
 }
@@ -190,6 +233,7 @@ function resolveUrl(value: string, baseUrl: URL): URL {
   return URL.canParse(value) ? new URL(value) : new URL(value, baseUrl);
 }
 
+// Downloads one segment as raw bytes.
 function fetchSegment(
   url: string,
   headers: Record<string, string> | undefined,
@@ -212,17 +256,6 @@ function fetchSegment(
     ),
     Effect.map((buffer) => new Uint8Array(buffer)),
   );
-}
-
-function addAll(
-  set: ReadonlySet<string>,
-  values: readonly string[],
-): Set<string> {
-  const next = new Set(set);
-  for (const value of values) {
-    next.add(value);
-  }
-  return next;
 }
 
 function isAbortError(err: unknown): err is DOMException {
