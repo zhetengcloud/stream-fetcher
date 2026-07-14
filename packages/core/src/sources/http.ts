@@ -1,28 +1,18 @@
-import { Data, Effect, Match, Stream } from "effect";
+import { Effect, Match, Stream } from "effect";
 import type { Source } from "@stream-fetcher/core/types";
+import {
+  HttpRequestError,
+  HttpResponseBodyError,
+  type HttpSourceError,
+  HttpStreamError,
+} from "@stream-fetcher/core/errors/http";
 
-type HttpRequestErrorPayload = {
-  readonly status: number;
-  readonly statusText: string;
-};
-
-export class HttpRequestError
-  extends Data.TaggedError("HttpRequestError")<HttpRequestErrorPayload> {}
-
-export class HttpResponseBodyError
-  extends Data.TaggedError("HttpResponseBodyError") {}
-
-type HttpStreamErrorPayload = {
-  readonly cause: unknown;
-};
-
-export class HttpStreamError
-  extends Data.TaggedError("HttpStreamError")<HttpStreamErrorPayload> {}
-
-export type HttpSourceError =
-  | HttpRequestError
-  | HttpResponseBodyError
-  | HttpStreamError;
+export {
+  HttpRequestError,
+  HttpResponseBodyError,
+  HttpStreamError,
+} from "@stream-fetcher/core/errors/http";
+export type { HttpSourceError } from "@stream-fetcher/core/errors/http";
 
 /** Options for the generic HTTP(S) source. */
 export interface HttpSourceOptions {

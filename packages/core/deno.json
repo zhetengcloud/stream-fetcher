@@ -7,6 +7,7 @@
     "./messages": "./src/messages.ts",
     "./recorder": "./src/recorder.ts",
     "./sources/http": "./src/sources/http.ts",
+    "./errors/http": "./src/errors/http.ts",
     "./sources/hls": "./src/sources/hls.ts",
     "./sinks/file": "./src/sinks/file.ts",
     "./sinks/stdout": "./src/sinks/stdout.ts",
