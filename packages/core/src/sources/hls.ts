@@ -3,14 +3,12 @@ import type { Source } from "@stream-fetcher/core/types";
 import { messages } from "@stream-fetcher/core/messages";
 import {
   type HlsError,
-  PlaylistAbortedError,
   PlaylistRequestError,
   PlaylistTextError,
   SegmentRequestError,
 } from "@stream-fetcher/core/errors/hls";
 
 export {
-  PlaylistAbortedError,
   PlaylistRequestError,
   PlaylistTextError,
   SegmentRequestError,
@@ -67,7 +65,12 @@ export class HlsSource implements Source<HlsError, HlsSourceOptions> {
             return Option.none();
           }
 
-          const playlist = yield* fetchPlaylist(baseUrl, headers, signal);
+          const playlistOption = yield* fetchPlaylist(baseUrl, headers, signal);
+          if (Option.isNone(playlistOption)) {
+            return Option.none();
+          }
+          const playlist = playlistOption.value;
+
           const pending = segmentUrls(playlist, baseUrl).filter((url) =>
             !state.fetched.has(url)
           );
@@ -106,44 +109,65 @@ export class HlsSource implements Source<HlsError, HlsSourceOptions> {
               refreshCount: state.refreshCount + 1,
             },
           ]);
-        }).pipe(
-          Effect.catchTag("PlaylistAbortedError", () =>
-            Effect.succeed(
-              Option.none<[Chunk.Chunk<Uint8Array>, PollState]>(),
-            )),
-        ),
+        }),
     );
   }
 }
+
+type FetchPlaylistEffect = Effect.Effect<
+  Option.Option<ParsedPlaylist>,
+  PlaylistRequestError | PlaylistTextError,
+  never
+>;
 
 function fetchPlaylist(
   url: URL,
   headers: Record<string, string> | undefined,
   signal: AbortSignal,
-): Effect.Effect<
-  ParsedPlaylist,
-  PlaylistRequestError | PlaylistTextError | PlaylistAbortedError,
+): FetchPlaylistEffect {
+  return fetchResponse(url, headers, signal).pipe(
+    Effect.flatMap(
+      Option.match({
+        onNone: (): FetchPlaylistEffect =>
+          Effect.succeed(Option.none<ParsedPlaylist>()),
+        onSome: (response): FetchPlaylistEffect =>
+          response.ok
+            ? Effect.tryPromise({
+              try: () => response.text(),
+              catch: (err) => new PlaylistTextError({ cause: err }),
+            }).pipe(
+              Effect.map((text) => Option.some(parsePlaylist(text))),
+            )
+            : Effect.fail(
+              new PlaylistRequestError({ status: response.status }),
+            ),
+      }),
+    ),
+  );
+}
+
+type FetchResponseEffect = Effect.Effect<
+  Option.Option<Response>,
+  PlaylistRequestError,
   never
-> {
+>;
+
+function fetchResponse(
+  url: URL,
+  headers: Record<string, string> | undefined,
+  signal: AbortSignal,
+): FetchResponseEffect {
   return Effect.tryPromise({
     try: () => fetch(url, { headers, signal }),
-    catch: (err) =>
-      isAbortError(err)
-        ? new PlaylistAbortedError()
-        : new PlaylistRequestError({ status: 0 }),
+    catch: (err) => err,
   }).pipe(
-    Effect.flatMap((response) =>
-      response.ok
-        ? Effect.succeed(response)
-        : Effect.fail(new PlaylistRequestError({ status: response.status }))
-    ),
-    Effect.flatMap((response) =>
-      Effect.tryPromise({
-        try: () => response.text(),
-        catch: (err) => new PlaylistTextError({ cause: err }),
-      })
-    ),
-    Effect.map(parsePlaylist),
+    Effect.matchEffect({
+      onFailure: (err) =>
+        isAbortError(err)
+          ? Effect.succeed(Option.none())
+          : Effect.fail(new PlaylistRequestError({ status: 0 })),
+      onSuccess: (response) => Effect.succeed(Option.some(response)),
+    }),
   );
 }
 
