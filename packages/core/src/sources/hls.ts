@@ -125,25 +125,26 @@ function fetchPlaylist(
   headers: Record<string, string> | undefined,
   signal: AbortSignal,
 ): FetchPlaylistEffect {
-  return fetchResponse(url, headers, signal).pipe(
-    Effect.flatMap(
-      Option.match({
-        onNone: (): FetchPlaylistEffect =>
-          Effect.succeed(Option.none<ParsedPlaylist>()),
-        onSome: (response): FetchPlaylistEffect =>
-          response.ok
-            ? Effect.tryPromise({
-              try: () => response.text(),
-              catch: (err) => new PlaylistTextError({ cause: err }),
-            }).pipe(
-              Effect.map((text) => Option.some(parsePlaylist(text))),
-            )
-            : Effect.fail(
-              new PlaylistRequestError({ status: response.status }),
-            ),
-      }),
-    ),
-  );
+  return Effect.gen(function* () {
+    const responseOption = yield* fetchResponse(url, headers, signal);
+    if (Option.isNone(responseOption)) {
+      return Option.none<ParsedPlaylist>();
+    }
+
+    const response = responseOption.value;
+    if (!response.ok) {
+      return yield* Effect.fail(
+        new PlaylistRequestError({ status: response.status }),
+      );
+    }
+
+    const text = yield* Effect.tryPromise({
+      try: () => response.text(),
+      catch: (err) => new PlaylistTextError({ cause: err }),
+    });
+
+    return Option.some(parsePlaylist(text));
+  });
 }
 
 type FetchResponseEffect = Effect.Effect<
