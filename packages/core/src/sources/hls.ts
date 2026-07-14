@@ -1,32 +1,21 @@
-import { Chunk, Data, Effect, Option, Stream } from "effect";
+import { Chunk, Effect, Option, Stream } from "effect";
 import type { Source } from "@stream-fetcher/core/types";
 import { messages } from "@stream-fetcher/core/messages";
+import {
+  type HlsError,
+  PlaylistAbortedError,
+  PlaylistRequestError,
+  PlaylistTextError,
+  SegmentRequestError,
+} from "@stream-fetcher/core/errors/hls";
 
-type PlaylistRequestErrorPayload = { status: number };
-
-export class PlaylistRequestError
-  extends Data.TaggedError("PlaylistRequestError")<
-    PlaylistRequestErrorPayload
-  > {}
-
-type PlaylistTextErrorPayload = { cause: unknown };
-
-export class PlaylistTextError
-  extends Data.TaggedError("PlaylistTextError")<PlaylistTextErrorPayload> {}
-
-export class PlaylistAbortedError
-  extends Data.TaggedError("PlaylistAbortedError") {}
-
-type SegmentRequestErrorPayload = { status: number };
-
-export class SegmentRequestError
-  extends Data.TaggedError("SegmentRequestError")<SegmentRequestErrorPayload> {}
-
-export type HlsError =
-  | PlaylistRequestError
-  | PlaylistTextError
-  | PlaylistAbortedError
-  | SegmentRequestError;
+export {
+  PlaylistAbortedError,
+  PlaylistRequestError,
+  PlaylistTextError,
+  SegmentRequestError,
+} from "@stream-fetcher/core/errors/hls";
+export type { HlsError } from "@stream-fetcher/core/errors/hls";
 
 /** Options for the HLS source. */
 export interface HlsSourceOptions {
