@@ -2,43 +2,31 @@ import { Chunk, Data, Effect, Option, Stream } from "effect";
 import type { Source } from "@stream-fetcher/core/types";
 import { messages } from "@stream-fetcher/core/messages";
 
-class PlaylistRequestError
-  extends Data.TaggedError("PlaylistRequestError")<{ status: number }> {}
+type PlaylistRequestErrorPayload = { status: number };
 
-class PlaylistTextError
-  extends Data.TaggedError("PlaylistTextError")<{ cause: unknown }> {}
+export class PlaylistRequestError
+  extends Data.TaggedError("PlaylistRequestError")<
+    PlaylistRequestErrorPayload
+  > {}
 
-class PlaylistAbortedError extends Data.TaggedError("PlaylistAbortedError") {}
+type PlaylistTextErrorPayload = { cause: unknown };
 
-class SegmentRequestError
-  extends Data.TaggedError("SegmentRequestError")<{ status: number }> {}
+export class PlaylistTextError
+  extends Data.TaggedError("PlaylistTextError")<PlaylistTextErrorPayload> {}
 
-type HlsError =
+export class PlaylistAbortedError
+  extends Data.TaggedError("PlaylistAbortedError") {}
+
+type SegmentRequestErrorPayload = { status: number };
+
+export class SegmentRequestError
+  extends Data.TaggedError("SegmentRequestError")<SegmentRequestErrorPayload> {}
+
+export type HlsError =
   | PlaylistRequestError
   | PlaylistTextError
   | PlaylistAbortedError
   | SegmentRequestError;
-
-function hlsErrorToError(err: HlsError): Error {
-  switch (err._tag) {
-    case "PlaylistRequestError":
-      return new Error(
-        `${messages.errors.hlsPlaylistRequestFailed}: ${err.status}`,
-      );
-    case "PlaylistTextError":
-      return err.cause instanceof Error
-        ? new Error(
-          `${messages.errors.hlsPlaylistTextReadFailed}: ${err.cause.message}`,
-        )
-        : new Error(messages.errors.hlsPlaylistTextReadFailed);
-    case "PlaylistAbortedError":
-      return new Error(messages.errors.hlsPlaylistRequestAborted);
-    case "SegmentRequestError":
-      return new Error(
-        `${messages.errors.hlsSegmentRequestFailed}: ${err.status}`,
-      );
-  }
-}
 
 /** Options for the HLS source. */
 export interface HlsSourceOptions {
@@ -65,10 +53,10 @@ export interface HlsSourceOptions {
  * source refreshes the playlist at `refreshIntervalMs` and fetches new segments
  * as they appear.
  */
-export class HlsSource implements Source<HlsSourceOptions> {
+export class HlsSource implements Source<HlsError, HlsSourceOptions> {
   readonly name = "hls";
 
-  open(options: HlsSourceOptions): Stream.Stream<Uint8Array, Error, never> {
+  open(options: HlsSourceOptions): Stream.Stream<Uint8Array, HlsError, never> {
     const baseUrl = new URL(options.playlistUrl);
     const headers = options.headers;
     const signal = options.signal ?? new AbortController().signal;
@@ -134,7 +122,6 @@ export class HlsSource implements Source<HlsSourceOptions> {
             Effect.succeed(
               Option.none<[Chunk.Chunk<Uint8Array>, PollState]>(),
             )),
-          Effect.mapError(hlsErrorToError),
         ),
     );
   }
@@ -195,18 +182,22 @@ function fetchSegment(
   signal: AbortSignal,
 ): Effect.Effect<Uint8Array, SegmentRequestError, never> {
   return Effect.tryPromise({
-    try: async () => {
-      const response = await fetch(url, { headers, signal });
-      if (!response.ok) {
-        throw new SegmentRequestError({ status: response.status });
-      }
-      return new Uint8Array(await response.arrayBuffer());
-    },
-    catch: (err) =>
-      err instanceof SegmentRequestError
-        ? err
-        : new SegmentRequestError({ status: 0 }),
-  });
+    try: () => fetch(url, { headers, signal }),
+    catch: () => new SegmentRequestError({ status: 0 }),
+  }).pipe(
+    Effect.flatMap((response) =>
+      response.ok
+        ? Effect.succeed(response)
+        : Effect.fail(new SegmentRequestError({ status: response.status }))
+    ),
+    Effect.flatMap((response) =>
+      Effect.tryPromise({
+        try: () => response.arrayBuffer(),
+        catch: () => new SegmentRequestError({ status: 0 }),
+      })
+    ),
+    Effect.map((buffer) => new Uint8Array(buffer)),
+  );
 }
 
 function addAll(

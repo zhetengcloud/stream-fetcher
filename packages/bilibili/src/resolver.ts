@@ -1,7 +1,10 @@
 import { Effect } from "effect";
 import type { ResolvedStream, Resolver } from "@stream-fetcher/core/types";
-import { HlsSource } from "@stream-fetcher/core/sources/hls";
-import { HttpSource } from "@stream-fetcher/core/sources/http";
+import { type HlsError, HlsSource } from "@stream-fetcher/core/sources/hls";
+import {
+  HttpSource,
+  type HttpSourceError,
+} from "@stream-fetcher/core/sources/http";
 import { messages } from "@stream-fetcher/bilibili/messages";
 
 export enum BilibiliProtocol {
@@ -32,7 +35,8 @@ interface PlayUrlResponse {
 }
 
 /** Resolves Bilibili live room URLs into a ResolvedStream. */
-export class BilibiliResolver implements Resolver<BilibiliResolverOptions> {
+export class BilibiliResolver
+  implements Resolver<BilibiliResolverOptions, HttpSourceError | HlsError> {
   readonly platform = messages.platform;
   readonly #roomPattern =
     /(?:https?:\/\/)?(?:www\.|m\.|live\.)?bilibili\.com\/(?:blanc\/|h5\/)?(\d+)/;
@@ -44,7 +48,7 @@ export class BilibiliResolver implements Resolver<BilibiliResolverOptions> {
   resolve(
     url: string,
     options: BilibiliResolverOptions = {},
-  ): Effect.Effect<ResolvedStream, Error, never> {
+  ): Effect.Effect<ResolvedStream<HttpSourceError | HlsError>, Error, never> {
     return Effect.gen(function* () {
       const match = resolver.#roomPattern.exec(url);
       if (!match) {

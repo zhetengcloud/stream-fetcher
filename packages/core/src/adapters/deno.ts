@@ -2,7 +2,7 @@ import { Effect, Stream } from "effect";
 import type { FileSystem } from "@stream-fetcher/core/types";
 
 /** Creates a FileSystem adapter backed by Deno APIs. */
-export function createDenoFileSystem(): FileSystem {
+export function createDenoFileSystem(): FileSystem<Error> {
   return {
     write(path: string, stream: Stream.Stream<Uint8Array, Error, never>) {
       return Effect.gen(function* () {

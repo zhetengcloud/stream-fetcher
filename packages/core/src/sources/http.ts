@@ -1,6 +1,28 @@
-import { Effect, Stream } from "effect";
+import { Data, Effect, Match, Stream } from "effect";
 import type { Source } from "@stream-fetcher/core/types";
-import { messages } from "@stream-fetcher/core/messages";
+
+type HttpRequestErrorPayload = {
+  readonly status: number;
+  readonly statusText: string;
+};
+
+export class HttpRequestError
+  extends Data.TaggedError("HttpRequestError")<HttpRequestErrorPayload> {}
+
+export class HttpResponseBodyError
+  extends Data.TaggedError("HttpResponseBodyError") {}
+
+type HttpStreamErrorPayload = {
+  readonly cause: unknown;
+};
+
+export class HttpStreamError
+  extends Data.TaggedError("HttpStreamError")<HttpStreamErrorPayload> {}
+
+export type HttpSourceError =
+  | HttpRequestError
+  | HttpResponseBodyError
+  | HttpStreamError;
 
 /** Options for the generic HTTP(S) source. */
 export interface HttpSourceOptions {
@@ -10,43 +32,59 @@ export interface HttpSourceOptions {
 }
 
 /** Fetches a raw HTTP(S) stream and exposes it as a Source. */
-export class HttpSource implements Source<HttpSourceOptions> {
+export class HttpSource implements Source<HttpSourceError, HttpSourceOptions> {
   readonly name = "http";
 
-  open(options: HttpSourceOptions): Stream.Stream<Uint8Array, Error, never> {
+  open(
+    options: HttpSourceOptions,
+  ): Stream.Stream<Uint8Array, HttpSourceError, never> {
     return fetchResponse(options).pipe(
-      Stream.flatMap((response) =>
+      Effect.map((response) =>
         Stream.fromReadableStream(
           () => response,
-          (err) => err instanceof Error ? err : new Error(String(err)),
+          (err) => new HttpStreamError({ cause: err }),
         )
       ),
+      Stream.unwrap,
     );
   }
 }
 
-function fetchResponse(
-  options: HttpSourceOptions,
-): Stream.Stream<ReadableStream<Uint8Array>, Error, never> {
-  return Stream.fromEffect(
-    Effect.tryPromise({
-      try: async () => {
-        const response = await fetch(options.url, {
-          headers: options.headers,
-          signal: options.signal,
-        });
-        if (!response.ok) {
-          throw new Error(
-            `${messages.errors.httpRequestFailed}: ${response.status} ${response.statusText}`,
-          );
-        }
-        if (!response.body) {
-          throw new Error(messages.errors.responseBodyIsNull);
-        }
-        return response.body;
-      },
-      catch: (err: unknown) =>
-        err instanceof Error ? err : new Error(String(err)),
-    }),
+type FetchResponseEffect = Effect.Effect<
+  ReadableStream<Uint8Array>,
+  HttpSourceError,
+  never
+>;
+
+function fetchResponse(options: HttpSourceOptions): FetchResponseEffect {
+  return Effect.tryPromise({
+    try: () =>
+      fetch(options.url, {
+        headers: options.headers,
+        signal: options.signal,
+      }),
+    catch: (err: unknown): HttpSourceError =>
+      new HttpRequestError({ status: 0, statusText: String(err) }),
+  }).pipe(
+    Effect.flatMap(handleResponse),
+  );
+}
+
+function handleResponse(response: Response): FetchResponseEffect {
+  return Match.value(response).pipe(
+    Match.withReturnType<FetchResponseEffect>(),
+    Match.when(
+      { ok: true, body: Match.defined },
+      (res) => Effect.succeed(res.body),
+    ),
+    Match.when({ ok: true }, () => Effect.fail(new HttpResponseBodyError())),
+    Match.orElse((res) =>
+      Effect.fail(
+        new HttpRequestError({
+          status: res.status,
+          statusText: res.statusText,
+        }),
+      )
+    ),
   );
 }

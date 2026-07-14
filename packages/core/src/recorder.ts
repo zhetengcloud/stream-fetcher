@@ -24,12 +24,12 @@ export interface ProgressMetrics {
  * Effect-based recorder. Returns a stream of {@link ProgressMetrics} while
  * piping the source into the sink.
  */
-export function record<K = unknown>(
-  source: Stream.Stream<Uint8Array, Error, never>,
-  sink: Sink<K>,
+export function record<E = Error, K = unknown>(
+  source: Stream.Stream<Uint8Array, E, never>,
+  sink: Sink<E, K>,
   sinkOptions?: K,
   options: RecorderOptions = {},
-): Stream.Stream<ProgressMetrics, Error, never> {
+): Stream.Stream<ProgressMetrics, E, never> {
   return Stream.asyncEffect((emit) =>
     Effect.gen(function* () {
       const startTime = performance.now();

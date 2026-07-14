@@ -2,7 +2,7 @@ import { Effect, Stream } from "effect";
 import type { Sink } from "@stream-fetcher/core/types";
 
 /** Writes the byte stream to Deno's stdout. */
-export class StdoutSink implements Sink<undefined> {
+export class StdoutSink implements Sink<Error, undefined> {
   readonly name = "stdout";
 
   write(

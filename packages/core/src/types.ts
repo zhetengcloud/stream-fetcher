@@ -1,20 +1,20 @@
 import type { Effect, Stream } from "effect";
 
 /** Produces a byte stream from a live source. */
-export interface Source<T = unknown> {
+export interface Source<E = Error, T = unknown> {
   readonly name: string;
   /** Open the byte stream as an Effect stream. */
-  open(options?: T): Stream.Stream<Uint8Array, Error, never>;
+  open(options?: T): Stream.Stream<Uint8Array, E, never>;
 }
 
 /** Consumes a byte stream and writes it somewhere. */
-export interface Sink<T = unknown> {
+export interface Sink<E = Error, T = unknown> {
   readonly name: string;
   /** Consumes the byte stream and returns an Effect that completes on success. */
   write(
-    stream: Stream.Stream<Uint8Array, Error, never>,
+    stream: Stream.Stream<Uint8Array, E, never>,
     options?: T,
-  ): Effect.Effect<void, Error, never>;
+  ): Effect.Effect<void, E, never>;
 }
 
 /** Metadata describing a resolved live stream. */
@@ -40,19 +40,19 @@ export interface StreamMetadata {
 }
 
 /** Result of resolving a platform URL: structured metadata plus the byte Source. */
-export interface ResolvedStream<S = unknown> {
+export interface ResolvedStream<E = Error, S = unknown> {
   metadata: StreamMetadata;
-  source: Source<S>;
+  source: Source<E, S>;
 }
 
 /** Converts a platform URL (e.g. Bilibili room) into a ResolvedStream. */
-export interface Resolver<T = unknown> {
+export interface Resolver<T = unknown, E = Error> {
   readonly platform: string;
   canHandle(url: string): boolean;
   resolve(
     url: string,
     options?: T,
-  ): Effect.Effect<ResolvedStream, Error, never>;
+  ): Effect.Effect<ResolvedStream<E>, Error, never>;
 }
 
 /** Options for StreamDetector polling. */
@@ -65,18 +65,18 @@ export interface DetectorOptions {
 /** Polls a source until it becomes live. */
 export interface StreamDetector {
   waitForLive(
-    source: Source,
+    source: Source<Error>,
     options: DetectorOptions,
   ): Stream.Stream<Uint8Array, Error, never>;
 }
 
 /** Runtime-specific filesystem abstraction for the file sink. */
-export interface FileSystem {
+export interface FileSystem<E = Error> {
   /** Write the byte stream to a file. */
   write(
     path: string,
-    stream: Stream.Stream<Uint8Array, Error, never>,
-  ): Effect.Effect<void, Error, never>;
+    stream: Stream.Stream<Uint8Array, E, never>,
+  ): Effect.Effect<void, E, never>;
   /** Create a directory (and any parent directories). */
-  mkdir(dir: string): Effect.Effect<void, Error, never>;
+  mkdir(dir: string): Effect.Effect<void, E, never>;
 }

@@ -38,7 +38,7 @@ interface UploadState {
 }
 
 /** Uploads a byte stream to S3-compatible object storage using multipart upload. */
-export class S3Sink implements Sink<S3SinkOptions> {
+export class S3Sink implements Sink<Error, S3SinkOptions> {
   readonly name = "s3";
 
   write(

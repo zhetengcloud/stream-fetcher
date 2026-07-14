@@ -2,9 +2,9 @@ import { assertEquals } from "@std/assert";
 import { Effect, Stream } from "effect";
 import { HlsSource } from "@stream-fetcher/core";
 
-function readAll(
-  stream: Stream.Stream<Uint8Array, Error, never>,
-): Effect.Effect<Uint8Array, Error, never> {
+function readAll<E>(
+  stream: Stream.Stream<Uint8Array, E, never>,
+): Effect.Effect<Uint8Array, E, never> {
   return stream.pipe(
     Stream.runCollect,
     Effect.map((chunk) => {
