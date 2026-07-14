@@ -95,7 +95,6 @@ Deno.test("record emits progress metrics and completes", async () => {
     intervalStream(chunks, 100),
     new FileSink(),
     { path: "/tmp/progress.bin", fs },
-    { progressIntervalMs: 50 },
   );
 
   const progressEvents = await Effect.runPromise(

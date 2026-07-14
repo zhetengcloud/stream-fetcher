@@ -1,12 +1,10 @@
-import { Effect, Fiber, Stream } from "effect";
+import { Effect, Stream } from "effect";
 import type { Sink, StreamMetadata } from "@stream-fetcher/core/types";
 
 /** Options for {@link record}. */
 export interface RecorderOptions {
   /** AbortSignal for stopping the recording. */
   signal?: AbortSignal;
-  /** Progress emit interval in milliseconds. Defaults to 1000. */
-  progressIntervalMs?: number;
   /** Optional metadata describing the stream (e.g. from a Resolver). */
   metadata?: StreamMetadata;
 }
@@ -20,6 +18,12 @@ export interface ProgressMetrics {
   metadata?: StreamMetadata;
 }
 
+/** Byte/chunk counters at a point in time. */
+interface MetricsState {
+  readonly bytes: number;
+  readonly chunkCount: number;
+}
+
 /**
  * Effect-based recorder. Returns a stream of {@link ProgressMetrics} while
  * piping the source into the sink.
@@ -30,90 +34,81 @@ export function record<E = Error, K = unknown>(
   sinkOptions?: K,
   options: RecorderOptions = {},
 ): Stream.Stream<ProgressMetrics, E, never> {
-  return Stream.asyncEffect((emit) =>
+  return Stream.unwrapScoped(
     Effect.gen(function* () {
-      const startTime = performance.now();
-      const intervalMs = options.progressIntervalMs ?? 1000;
-      let bytes = 0;
-      let chunkCount = 0;
-      let completed = false;
       const signal = options.signal;
+      const shared = yield* Stream.share(source, { capacity: "unbounded" });
+      const startTime = performance.now();
 
-      if (signal?.aborted) {
-        yield* Effect.promise(() => emit.end());
-        return Effect.void;
-      }
+      const counted = abortableStream(shared, signal);
+      const sinkWork = writeToSink(counted, sink, sinkOptions);
+      const progress = progressStream(shared, startTime, options.metadata);
 
-      const emitProgress = () => {
-        const elapsedMs = performance.now() - startTime;
-        return Effect.promise(() =>
-          emit.single({
-            bytes,
-            elapsedMs,
-            bitrateKbps: elapsedMs > 0 ? (bytes * 8) / elapsedMs : 0,
-            chunkCount,
-            metadata: options.metadata,
-          })
-        );
-      };
-
-      const countedSource = source.pipe(
+      return Stream.merge(progress, sinkWork, { haltStrategy: "either" }).pipe(
         Stream.interruptWhen(abortEffect(signal)),
-        Stream.tap((chunk: Uint8Array) =>
-          Effect.sync(() => {
-            bytes += chunk.length;
-            chunkCount++;
-          })
-        ),
       );
-
-      yield* emitProgress();
-
-      const sinkFiber = yield* Effect.fork(
-        sink.write(countedSource, sinkOptions),
-      );
-
-      const progressFiber = yield* Effect.fork(
-        Effect.gen(function* () {
-          while (true) {
-            yield* Effect.sleep(intervalMs);
-            yield* emitProgress();
-          }
-        }),
-      );
-
-      yield* Effect.fork(
-        Fiber.join(sinkFiber).pipe(
-          Effect.matchEffect({
-            onFailure: (err) =>
-              Effect.gen(function* () {
-                yield* Fiber.interrupt(progressFiber);
-                if (!completed) {
-                  completed = true;
-                  yield* Effect.promise(() => emit.fail(err));
-                }
-              }),
-            onSuccess: () =>
-              Effect.gen(function* () {
-                yield* Fiber.interrupt(progressFiber);
-                if (!completed) {
-                  completed = true;
-                  yield* Effect.promise(() => emit.end());
-                }
-              }),
-          }),
-        ),
-      );
-
-      return Effect.sync(() => {
-        if (!completed) {
-          completed = true;
-          Effect.runFork(Fiber.interrupt(sinkFiber));
-          Effect.runFork(Fiber.interrupt(progressFiber));
-        }
-      });
-    })
+    }),
   );
+}
+
+/**
+ * Writes a source stream into a sink and returns an empty stream that fails
+ * when the sink fails.
+ */
+function writeToSink<E, K>(
+  source: Stream.Stream<Uint8Array, E, never>,
+  sink: Sink<E, K>,
+  sinkOptions?: K,
+): Stream.Stream<never, E, never> {
+  return Stream.drain(Stream.fromEffect(sink.write(source, sinkOptions)));
+}
+
+/**
+ * Derives a progress stream from a source stream.
+ *
+ * Emits an initial snapshot before any chunks, then one snapshot after each
+ * chunk.
+ */
+function progressStream<E>(
+  source: Stream.Stream<Uint8Array, E, never>,
+  startTime: number,
+  metadata?: StreamMetadata,
+): Stream.Stream<ProgressMetrics, E, never> {
+  return source.pipe(
+    Stream.scan({ bytes: 0, chunkCount: 0 }, (state, chunk) => ({
+      bytes: state.bytes + chunk.length,
+      chunkCount: state.chunkCount + 1,
+    })),
+    Stream.map((state) => buildProgressMetrics(state, startTime, metadata)),
+  );
+}
+
+/** Builds a progress snapshot from the current metrics state. */
+function buildProgressMetrics(
+  state: MetricsState,
+  startTime: number,
+  metadata?: StreamMetadata,
+): ProgressMetrics {
+  const elapsedMs = performance.now() - startTime;
+  return {
+    bytes: state.bytes,
+    elapsedMs,
+    bitrateKbps: elapsedMs > 0 ? (state.bytes * 8) / elapsedMs : 0,
+    chunkCount: state.chunkCount,
+    metadata,
+  };
+}
+
+/**
+ * Makes any stream abortable. If the signal is already aborted, returns an
+ * empty stream; otherwise the stream is interrupted when the signal fires.
+ */
+function abortableStream<A, E, R>(
+  source: Stream.Stream<A, E, R>,
+  signal: AbortSignal | undefined,
+): Stream.Stream<A, E, R> {
+  if (signal?.aborted) return Stream.empty;
+  return source.pipe(Stream.interruptWhen(abortEffect(signal)));
 }
 
 function abortEffect(
