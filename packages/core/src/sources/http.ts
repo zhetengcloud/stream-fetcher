@@ -28,14 +28,13 @@ export class HttpSource implements Source<HttpSourceError, HttpSourceOptions> {
   open(
     options: HttpSourceOptions,
   ): Stream.Stream<Uint8Array, HttpSourceError, never> {
-    return fetchResponse(options).pipe(
-      Effect.map((response) =>
+    return Stream.fromEffect(fetchResponse(options)).pipe(
+      Stream.flatMap((response) =>
         Stream.fromReadableStream(
           () => response,
           (err) => new HttpStreamError({ cause: err }),
         )
       ),
-      Stream.unwrap,
     );
   }
 }
