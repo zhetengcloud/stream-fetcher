@@ -74,8 +74,10 @@ export class HlsSource implements Source<HlsError, HlsSourceOptions> {
   }
 }
 
+type PollResult = [Chunk.Chunk<Uint8Array>, PollState];
+
 type PollStepEffect = Effect.Effect<
-  Option.Option<[Chunk.Chunk<Uint8Array>, PollState]>,
+  Option.Option<PollResult>,
   HlsError,
   never
 >;
@@ -116,7 +118,7 @@ function pollStep(
         return Option.none();
       }
       yield* Effect.sleep(refreshIntervalMs);
-      return Option.some<[Chunk.Chunk<Uint8Array>, PollState]>([
+      return Option.some<PollResult>([
         Chunk.empty<Uint8Array>(),
         {
           fetched,
@@ -133,12 +135,12 @@ function pollStep(
       { concurrency: 1 },
     );
 
-    // Live playlists need a pause before the next refresh; VOD playlists end here.
+    // Live playlists need a pause before the next refresh; finalized playlists end here.
     if (!playlist.isEndlist) {
       yield* Effect.sleep(refreshIntervalMs);
     }
 
-    return Option.some<[Chunk.Chunk<Uint8Array>, PollState]>([
+    return Option.some<PollResult>([
       Chunk.fromIterable(chunks),
       {
         fetched,
