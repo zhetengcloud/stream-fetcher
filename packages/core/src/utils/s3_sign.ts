@@ -18,18 +18,14 @@ export interface SignRequestOptions {
   service: string;
 }
 
-export function signRequest(
-  options: SignRequestOptions,
-): Effect.Effect<Headers, Error, never> {
+export function signRequest(options: SignRequestOptions): Effect.Effect<Headers, Error, never> {
   return Effect.tryPromise({
     try: () => signRequestPromise(options),
-    catch: (err) => err instanceof Error ? err : new Error(String(err)),
+    catch: (err) => (err instanceof Error ? err : new Error(String(err))),
   });
 }
 
-async function signRequestPromise(
-  options: SignRequestOptions,
-): Promise<Headers> {
+async function signRequestPromise(options: SignRequestOptions): Promise<Headers> {
   const {
     method,
     url,
@@ -82,12 +78,7 @@ async function signRequestPromise(
     await sha256Hex(new TextEncoder().encode(canonicalRequest)),
   ].join("\n");
 
-  const signingKey = await getSignatureKey(
-    secretAccessKey,
-    dateStamp,
-    region,
-    service,
-  );
+  const signingKey = await getSignatureKey(secretAccessKey, dateStamp, region, service);
   const signature = await hmacHex(signingKey, stringToSign);
 
   headers.set(
@@ -131,11 +122,7 @@ async function hmac(key: Uint8Array, message: string): Promise<Uint8Array> {
     false,
     ["sign"],
   );
-  const signature = await crypto.subtle.sign(
-    "HMAC",
-    cryptoKey,
-    new TextEncoder().encode(message),
-  );
+  const signature = await crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(message));
   return new Uint8Array(signature);
 }
 
@@ -151,8 +138,5 @@ function toHex(data: Uint8Array): string {
 
 /** Coerce a Uint8Array into a BufferSource accepted by Web Crypto APIs. */
 function toBufferSource(data: Uint8Array): ArrayBuffer {
-  return data.buffer.slice(
-    data.byteOffset,
-    data.byteOffset + data.byteLength,
-  ) as ArrayBuffer;
+  return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
 }

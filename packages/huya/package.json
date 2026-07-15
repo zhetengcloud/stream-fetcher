@@ -1,12 +1,16 @@
 {
   "name": "@stream-fetcher/huya",
   "version": "0.1.0",
+  "type": "module",
+  "main": "./mod.ts",
   "exports": {
     ".": "./mod.ts",
     "./messages": "./src/messages.ts",
     "./internal": "./src/internal.ts"
   },
-  "imports": {
-    "@stream-fetcher/core": "../core/mod.ts"
+  "dependencies": {
+    "@stream-fetcher/core": "workspace:*",
+    "effect": "3.21.4",
+    "md5": "2.3.0"
   }
 }

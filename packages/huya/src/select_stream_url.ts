@@ -18,9 +18,7 @@ export function applyRatio(options: ApplyRatioOptions): string {
   }
 
   const ratios = bitrateInfo
-    .map((info) =>
-      typeof info.iBitRate === "number" ? info.iBitRate : maxBitrate
-    )
+    .map((info) => (typeof info.iBitRate === "number" ? info.iBitRate : maxBitrate))
     .filter((bitrate) => bitrate > 0 && bitrate <= maxRatio);
 
   const selectedRatio = ratios.length > 0 ? Math.max(...ratios) : 0;
@@ -40,9 +38,10 @@ export function selectStreamUrl(
   options: SelectStreamUrlOptions,
 ): Effect.Effect<string, Error, never> {
   const { streamUrls, preferredCdn } = options;
-  const selected = preferredCdn && preferredCdn.length > 0
-    ? streamUrls.find((s) => s.cdn === preferredCdn)
-    : undefined;
+  const selected =
+    preferredCdn && preferredCdn.length > 0
+      ? streamUrls.find((s) => s.cdn === preferredCdn)
+      : undefined;
   const result = selected ?? streamUrls[0];
   if (!result) {
     return Effect.fail(new Error(messages.errors.noUsableCdn));

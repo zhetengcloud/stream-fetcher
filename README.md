@@ -95,10 +95,9 @@ const program = record(
 await Effect.runPromise(
   Stream.runForEach(program, (metrics) =>
     Effect.sync(() => {
-      console.log(
-        `${metrics.bytes} bytes, ${metrics.bitrateKbps.toFixed(1)} kbps`,
-      );
-    })),
+      console.log(`${metrics.bytes} bytes, ${metrics.bitrateKbps.toFixed(1)} kbps`);
+    }),
+  ),
 );
 ```
 
@@ -106,12 +105,7 @@ You can also pass an `AbortSignal` to stop the recording externally:
 
 ```ts
 const controller = new AbortController();
-const program = record(
-  sourceStream,
-  sink,
-  sinkOptions,
-  { signal: controller.signal },
-);
+const program = record(sourceStream, sink, sinkOptions, { signal: controller.signal });
 controller.abort(); // stops recording
 ```
 

@@ -8,14 +8,9 @@ export interface FetchRoomPageOptions {
 }
 
 /** Fetches the Huya room HTML page as an Effect. */
-export function fetchRoomPage(
-  options: FetchRoomPageOptions,
-): Effect.Effect<string, Error, never> {
+export function fetchRoomPage(options: FetchRoomPageOptions): Effect.Effect<string, Error, never> {
   return Effect.gen(function* () {
-    const base = (options.webBase ?? messages.api.webBaseUrl).replace(
-      /\/$/,
-      "",
-    );
+    const base = (options.webBase ?? messages.api.webBaseUrl).replace(/\/$/, "");
     const response = yield* Effect.tryPromise({
       try: () =>
         fetch(`${base}/${options.roomId}`, {
@@ -24,15 +19,12 @@ export function fetchRoomPage(
             "user-agent": messages.api.userAgent,
           },
         }),
-      catch: (err: unknown) =>
-        err instanceof Error ? err : new Error(String(err)),
+      catch: (err: unknown) => (err instanceof Error ? err : new Error(String(err))),
     });
 
     if (!response.ok) {
       return yield* Effect.fail(
-        new Error(
-          `${messages.errors.roomPageRequestFailed}: ${response.status}`,
-        ),
+        new Error(`${messages.errors.roomPageRequestFailed}: ${response.status}`),
       );
     }
 

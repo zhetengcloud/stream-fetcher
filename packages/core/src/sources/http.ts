@@ -25,25 +25,19 @@ export interface HttpSourceOptions {
 export class HttpSource implements Source<HttpSourceError, HttpSourceOptions> {
   readonly name = "http";
 
-  open(
-    options: HttpSourceOptions,
-  ): Stream.Stream<Uint8Array, HttpSourceError, never> {
+  open(options: HttpSourceOptions): Stream.Stream<Uint8Array, HttpSourceError, never> {
     return Stream.fromEffect(fetchResponse(options)).pipe(
       Stream.flatMap((response) =>
         Stream.fromReadableStream(
           () => response,
           (err) => new HttpStreamError({ cause: err }),
-        )
+        ),
       ),
     );
   }
 }
 
-type FetchResponseEffect = Effect.Effect<
-  ReadableStream<Uint8Array>,
-  HttpSourceError,
-  never
->;
+type FetchResponseEffect = Effect.Effect<ReadableStream<Uint8Array>, HttpSourceError, never>;
 
 function fetchResponse(options: HttpSourceOptions): FetchResponseEffect {
   return Effect.tryPromise({
@@ -54,18 +48,13 @@ function fetchResponse(options: HttpSourceOptions): FetchResponseEffect {
       }),
     catch: (err: unknown): HttpSourceError =>
       new HttpRequestError({ status: 0, statusText: String(err) }),
-  }).pipe(
-    Effect.flatMap(handleResponse),
-  );
+  }).pipe(Effect.flatMap(handleResponse));
 }
 
 function handleResponse(response: Response): FetchResponseEffect {
   return Match.value(response).pipe(
     Match.withReturnType<FetchResponseEffect>(),
-    Match.when(
-      { ok: true, body: Match.defined },
-      (res) => Effect.succeed(res.body),
-    ),
+    Match.when({ ok: true, body: Match.defined }, (res) => Effect.succeed(res.body)),
     Match.when({ ok: true }, () => Effect.fail(new HttpResponseBodyError())),
     Match.orElse((res) =>
       Effect.fail(
@@ -73,7 +62,7 @@ function handleResponse(response: Response): FetchResponseEffect {
           status: res.status,
           statusText: res.statusText,
         }),
-      )
+      ),
     ),
   );
 }

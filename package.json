@@ -1,0 +1,28 @@
+{
+  "name": "@stream-fetcher/root",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "type": "module",
+  "scripts": {
+    "test": "bun test packages",
+    "lint": "eslint .",
+    "fmt": "oxfmt .",
+    "fmt:check": "oxfmt --check ."
+  },
+  "dependencies": {
+    "effect": "3.21.4",
+    "md5": "2.3.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@types/bun": "1.2.18",
+    "eslint": "9.39.5",
+    "globals": "16.5.0",
+    "oxfmt": "0.59.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.64.0"
+  }
+}

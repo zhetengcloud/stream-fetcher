@@ -47,8 +47,7 @@ export class HlsSource implements Source<HlsError, HlsSourceOptions> {
     const baseUrl = new URL(options.playlistUrl);
     const headers = options.headers;
     const signal = options.signal ?? new AbortController().signal;
-    const refreshIntervalMs = options.refreshIntervalMs ??
-      messages.defaults.hlsRefreshIntervalMs;
+    const refreshIntervalMs = options.refreshIntervalMs ?? messages.defaults.hlsRefreshIntervalMs;
     const maxRefreshCount = options.maxRefreshCount ?? Infinity;
 
     // Tracks which segment URLs have already been emitted across playlist refreshes.
@@ -59,28 +58,15 @@ export class HlsSource implements Source<HlsError, HlsSourceOptions> {
     };
 
     // Poll the playlist repeatedly, emitting a chunk of new segment bytes each step.
-    return Stream.unfoldChunkEffect(
-      initialState,
-      (state) =>
-        pollStep(
-          state,
-          baseUrl,
-          headers,
-          signal,
-          refreshIntervalMs,
-          maxRefreshCount,
-        ),
+    return Stream.unfoldChunkEffect(initialState, (state) =>
+      pollStep(state, baseUrl, headers, signal, refreshIntervalMs, maxRefreshCount),
     );
   }
 }
 
 type PollResult = [Chunk.Chunk<Uint8Array>, PollState];
 
-type PollStepEffect = Effect.Effect<
-  Option.Option<PollResult>,
-  HlsError,
-  never
->;
+type PollStepEffect = Effect.Effect<Option.Option<PollResult>, HlsError, never>;
 
 // One iteration of the HLS polling loop. Returns Option.none() to end the stream
 // when the source is aborted, the playlist ends, or no new segments appear.
@@ -106,9 +92,7 @@ function pollStep(
     const playlist = playlistOption.value;
 
     // Resolve new segment URLs and remember them so live refreshes don't re-emit old segments.
-    const pending = segmentUrls(playlist, baseUrl).filter((url) =>
-      !state.fetched.has(url)
-    );
+    const pending = segmentUrls(playlist, baseUrl).filter((url) => !state.fetched.has(url));
     const fetched = new Set([...state.fetched, ...pending]);
 
     // No new segments: a finalized playlist means the stream ended; otherwise wait
@@ -129,11 +113,9 @@ function pollStep(
     }
 
     // Download every new segment in playlist order and emit them as one chunk.
-    const chunks = yield* Effect.forEach(
-      pending,
-      (url) => fetchSegment(url, headers, signal),
-      { concurrency: 1 },
-    );
+    const chunks = yield* Effect.forEach(pending, (url) => fetchSegment(url, headers, signal), {
+      concurrency: 1,
+    });
 
     // Live playlists need a pause before the next refresh; finalized playlists end here.
     if (!playlist.isEndlist) {
@@ -172,9 +154,7 @@ function fetchPlaylist(
 
     const response = responseOption.value;
     if (!response.ok) {
-      return yield* Effect.fail(
-        new PlaylistRequestError({ status: response.status }),
-      );
+      return yield* Effect.fail(new PlaylistRequestError({ status: response.status }));
     }
 
     // Playlist body is plain text (m3u8).
@@ -187,11 +167,7 @@ function fetchPlaylist(
   });
 }
 
-type FetchResponseEffect = Effect.Effect<
-  Option.Option<Response>,
-  PlaylistRequestError,
-  never
->;
+type FetchResponseEffect = Effect.Effect<Option.Option<Response>, PlaylistRequestError, never>;
 
 // Fetches the playlist HTTP response. Abortion is mapped to Option.none() so it
 // can terminate the stream without being treated as a failure.
@@ -248,13 +224,13 @@ function fetchSegment(
     Effect.flatMap((response) =>
       response.ok
         ? Effect.succeed(response)
-        : Effect.fail(new SegmentRequestError({ status: response.status }))
+        : Effect.fail(new SegmentRequestError({ status: response.status })),
     ),
     Effect.flatMap((response) =>
       Effect.tryPromise({
         try: () => response.arrayBuffer(),
         catch: () => new SegmentRequestError({ status: 0 }),
-      })
+      }),
     ),
     Effect.map((buffer) => new Uint8Array(buffer)),
   );

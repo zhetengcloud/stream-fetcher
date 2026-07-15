@@ -1,4 +1,4 @@
-import { assertEquals, assertExists } from "@std/assert";
+import { expect, test } from "bun:test";
 import { Effect } from "effect";
 import { HuyaProtocol, HuyaResolver } from "@stream-fetcher/huya";
 import { messages } from "@stream-fetcher/huya/messages";
@@ -49,20 +49,23 @@ var hyPlayerConfig = {
 </html>
 `;
 
-Deno.test("HuyaResolver resolves a room URL into a Source", async () => {
+test("HuyaResolver resolves a room URL into a Source", async () => {
   const resolver = new HuyaResolver();
 
-  const server = Deno.serve({ port: 0 }, (request) => {
-    const url = new URL(request.url);
-    if (url.pathname === "/testroom") {
-      return new Response(ROOM_PAGE_TEMPLATE, {
-        headers: { "content-type": "text/html" },
-      });
-    }
-    return new Response("not found", { status: 404 });
+  const server = Bun.serve({
+    port: 0,
+    fetch: (request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/testroom") {
+        return new Response(ROOM_PAGE_TEMPLATE, {
+          headers: { "content-type": "text/html" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    },
   });
 
-  const port = (server.addr as Deno.NetAddr).port;
+  const port = server.port;
 
   try {
     const resolved = await Effect.runPromise(
@@ -72,42 +75,45 @@ Deno.test("HuyaResolver resolves a room URL into a Source", async () => {
       }),
     );
 
-    assertEquals(resolved.source.name, "huya");
-    assertExists(resolved.source.open);
-    assertEquals(resolved.metadata.platform, "huya");
-    assertEquals(resolved.metadata.format, HuyaProtocol.Flv);
-    assertEquals(resolved.metadata.roomId, "testroom");
-    assertEquals(typeof resolved.metadata.playUrl, "string");
+    expect(resolved.source.name).toBe("huya");
+    expect(resolved.source.open).toBeDefined();
+    expect(resolved.metadata.platform).toBe("huya");
+    expect(resolved.metadata.format).toBe(HuyaProtocol.Flv);
+    expect(resolved.metadata.roomId).toBe("testroom");
+    expect(typeof resolved.metadata.playUrl).toBe("string");
 
     // Do not open the HTTP source in unit tests; it would hit example.com.
     // Verifying the source is returned is sufficient here.
   } finally {
-    await server.shutdown();
+    await server.stop();
   }
 });
 
-Deno.test("HuyaResolver canHandle recognizes room URLs", () => {
+test("HuyaResolver canHandle recognizes room URLs", () => {
   const resolver = new HuyaResolver();
-  assertEquals(resolver.canHandle("https://www.huya.com/testroom"), true);
-  assertEquals(resolver.canHandle("https://m.huya.com/testroom"), true);
-  assertEquals(resolver.canHandle("https://www.huya.com/12345"), true);
-  assertEquals(resolver.canHandle("https://bilibili.com/12345"), false);
+  expect(resolver.canHandle("https://www.huya.com/testroom")).toBe(true);
+  expect(resolver.canHandle("https://m.huya.com/testroom")).toBe(true);
+  expect(resolver.canHandle("https://www.huya.com/12345")).toBe(true);
+  expect(resolver.canHandle("https://bilibili.com/12345")).toBe(false);
 });
 
-Deno.test("HuyaResolver prefers selected CDN", async () => {
+test("HuyaResolver prefers selected CDN", async () => {
   const resolver = new HuyaResolver();
 
-  const server = Deno.serve({ port: 0 }, (request) => {
-    const url = new URL(request.url);
-    if (url.pathname === "/testroom") {
-      return new Response(ROOM_PAGE_TEMPLATE, {
-        headers: { "content-type": "text/html" },
-      });
-    }
-    return new Response("not found", { status: 404 });
+  const server = Bun.serve({
+    port: 0,
+    fetch: (request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/testroom") {
+        return new Response(ROOM_PAGE_TEMPLATE, {
+          headers: { "content-type": "text/html" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    },
   });
 
-  const port = (server.addr as Deno.NetAddr).port;
+  const port = server.port;
 
   try {
     const resolved = await Effect.runPromise(
@@ -119,33 +125,36 @@ Deno.test("HuyaResolver prefers selected CDN", async () => {
     );
 
     // The resolver should select the HW CDN over the higher-priority TX CDN.
-    assertEquals(resolved.source.name, "huya");
-    assertExists(resolved.source.open);
+    expect(resolved.source.name).toBe("huya");
+    expect(resolved.source.open).toBeDefined();
   } finally {
-    await server.shutdown();
+    await server.stop();
   }
 });
 
-Deno.test("HuyaResolver rejects offline rooms", async () => {
+test("HuyaResolver rejects offline rooms", async () => {
   const resolver = new HuyaResolver();
 
-  const server = Deno.serve({ port: 0 }, (request) => {
-    const url = new URL(request.url);
-    if (url.pathname === "/offline") {
-      return new Response(
-        `
-        <script>
-        var TT_ROOM_DATA = {"state":"OFF"};
-        var hyPlayerConfig = { stream: {"data":[],"vMultiStreamInfo":[]} };
-        </script>
-        `,
-        { headers: { "content-type": "text/html" } },
-      );
-    }
-    return new Response("not found", { status: 404 });
+  const server = Bun.serve({
+    port: 0,
+    fetch: (request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/offline") {
+        return new Response(
+          `
+          <script>
+          var TT_ROOM_DATA = {"state":"OFF"};
+          var hyPlayerConfig = { stream: {"data":[],"vMultiStreamInfo":[]} };
+          </script>
+          `,
+          { headers: { "content-type": "text/html" } },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    },
   });
 
-  const port = (server.addr as Deno.NetAddr).port;
+  const port = server.port;
 
   try {
     let caught = false;
@@ -157,52 +166,52 @@ Deno.test("HuyaResolver rejects offline rooms", async () => {
       );
     } catch (err) {
       caught = true;
-      assertEquals(
-        (err as Error).message,
-        messages.errors.offlineOrMissingData,
-      );
+      expect((err as Error).message).toBe(messages.errors.offlineOrMissingData);
     }
-    assertEquals(caught, true);
+    expect(caught).toBe(true);
   } finally {
-    await server.shutdown();
+    await server.stop();
   }
 });
 
-Deno.test("HuyaResolver rejects replays", async () => {
+test("HuyaResolver rejects replays", async () => {
   const resolver = new HuyaResolver();
 
-  const server = Deno.serve({ port: 0 }, (request) => {
-    const url = new URL(request.url);
-    if (url.pathname === "/replay") {
-      return new Response(
-        `
-        <script>
-        var TT_ROOM_DATA = {"state":"ON"};
-        var hyPlayerConfig = {
-          stream: {
-            "data": [{
-              "gameLiveInfo": {"introduction":"精彩回放","screenshot":"","bitRate":0},
-              "gameStreamInfoList": [{
-                "sStreamName":"replay",
-                "sCdnType":"TX",
-                "iWebPriorityRate":100,
-                "sFlvUrl":"http://flv.example.com",
-                "sFlvUrlSuffix":"flv",
-                "sFlvAntiCode":"fm=bgct\u0026ctype=huya_live\u0026t=100\u0026wsTime=66666666"
-              }]
-            }],
-            "vMultiStreamInfo":[{"iBitRate":10000}]
-          }
-        };
-        </script>
-        `,
-        { headers: { "content-type": "text/html" } },
-      );
-    }
-    return new Response("not found", { status: 404 });
+  const server = Bun.serve({
+    port: 0,
+    fetch: (request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/replay") {
+        return new Response(
+          `
+          <script>
+          var TT_ROOM_DATA = {"state":"ON"};
+          var hyPlayerConfig = {
+            stream: {
+              "data": [{
+                "gameLiveInfo": {"introduction":"精彩回放","screenshot":"","bitRate":0},
+                "gameStreamInfoList": [{
+                  "sStreamName":"replay",
+                  "sCdnType":"TX",
+                  "iWebPriorityRate":100,
+                  "sFlvUrl":"http://flv.example.com",
+                  "sFlvUrlSuffix":"flv",
+                  "sFlvAntiCode":"fm=bgct\u0026ctype=huya_live\u0026t=100\u0026wsTime=66666666"
+                }]
+              }],
+              "vMultiStreamInfo":[{"iBitRate":10000}]
+            }
+          };
+          </script>
+          `,
+          { headers: { "content-type": "text/html" } },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    },
   });
 
-  const port = (server.addr as Deno.NetAddr).port;
+  const port = server.port;
 
   try {
     let caught = false;
@@ -214,13 +223,10 @@ Deno.test("HuyaResolver rejects replays", async () => {
       );
     } catch (err) {
       caught = true;
-      assertEquals(
-        (err as Error).message,
-        messages.errors.replay,
-      );
+      expect((err as Error).message).toBe(messages.errors.replay);
     }
-    assertEquals(caught, true);
+    expect(caught).toBe(true);
   } finally {
-    await server.shutdown();
+    await server.stop();
   }
 });

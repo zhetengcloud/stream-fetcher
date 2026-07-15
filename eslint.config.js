@@ -1,6 +1,6 @@
-import js from "npm:@eslint/js@9";
-import tseslint from "npm:typescript-eslint@8";
-import globals from "npm:globals@16";
+import js from "@eslint/js";
+import tseslint from "typescript-eslint";
+import globals from "globals";
 
 export default tseslint.config(
   js.configs.recommended,
@@ -10,7 +10,7 @@ export default tseslint.config(
     languageOptions: {
       globals: {
         ...globals.node,
-        Deno: "readonly",
+        Bun: "readonly",
       },
     },
     rules: {

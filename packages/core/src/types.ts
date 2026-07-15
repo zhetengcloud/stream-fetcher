@@ -11,10 +11,7 @@ export interface Source<E = Error, T = unknown> {
 export interface Sink<E = Error, T = unknown> {
   readonly name: string;
   /** Consumes the byte stream and returns an Effect that completes on success. */
-  write(
-    stream: Stream.Stream<Uint8Array, E, never>,
-    options?: T,
-  ): Effect.Effect<void, E, never>;
+  write(stream: Stream.Stream<Uint8Array, E, never>, options?: T): Effect.Effect<void, E, never>;
 }
 
 /** Metadata describing a resolved live stream. */
@@ -49,10 +46,7 @@ export interface ResolvedStream<E = Error, S = unknown> {
 export interface Resolver<T = unknown, E = Error> {
   readonly platform: string;
   canHandle(url: string): boolean;
-  resolve(
-    url: string,
-    options?: T,
-  ): Effect.Effect<ResolvedStream<E>, Error, never>;
+  resolve(url: string, options?: T): Effect.Effect<ResolvedStream<E>, Error, never>;
 }
 
 /** Options for StreamDetector polling. */
@@ -73,10 +67,7 @@ export interface StreamDetector {
 /** Runtime-specific filesystem abstraction for the file sink. */
 export interface FileSystem<E = Error> {
   /** Write the byte stream to a file. */
-  write(
-    path: string,
-    stream: Stream.Stream<Uint8Array, E, never>,
-  ): Effect.Effect<void, E, never>;
+  write(path: string, stream: Stream.Stream<Uint8Array, E, never>): Effect.Effect<void, E, never>;
   /** Create a directory (and any parent directories). */
   mkdir(dir: string): Effect.Effect<void, E, never>;
 }

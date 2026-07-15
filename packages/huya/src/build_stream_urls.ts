@@ -29,9 +29,7 @@ export function buildStreamUrls(
     const streams: StreamUrl[] = [];
 
     for (const stream of streamsInfo) {
-      const priority = typeof stream.iWebPriorityRate === "number"
-        ? stream.iWebPriorityRate
-        : 0;
+      const priority = typeof stream.iWebPriorityRate === "number" ? stream.iWebPriorityRate : 0;
       if (priority < 0) continue;
 
       const streamName = stream.sStreamName;
@@ -45,8 +43,7 @@ export function buildStreamUrls(
       }
 
       const query = yield* buildAntiCode(streamName, antiCode);
-      const url =
-        `${baseUrl}/${streamName}.${suffix}?${query}&codec=${messages.stream.codec}`;
+      const url = `${baseUrl}/${streamName}.${suffix}?${query}&codec=${messages.stream.codec}`;
       streams.push({ cdn, priority, url });
     }
 
@@ -56,10 +53,7 @@ export function buildStreamUrls(
   });
 }
 
-function buildAntiCode(
-  streamName: string,
-  antiCode: string,
-): Effect.Effect<string, Error, never> {
+function buildAntiCode(streamName: string, antiCode: string): Effect.Effect<string, Error, never> {
   return Effect.gen(function* () {
     const params = new URLSearchParams(antiCode);
     const fm = params.get("fm");
@@ -68,8 +62,7 @@ function buildAntiCode(
     }
 
     const ctype = params.get("ctype") ?? messages.stream.antiCode.ctypeDefault;
-    const platformId = params.get("t") ??
-      messages.stream.antiCode.platformIdDefault;
+    const platformId = params.get("t") ?? messages.stream.antiCode.platformIdDefault;
     const uid = generateRandomUid();
     const nowSecs = Math.floor(Date.now() / 1000);
     const seqId = uid + BigInt(Date.now());
@@ -78,8 +71,7 @@ function buildAntiCode(
 
     const decodedFm = yield* Effect.try({
       try: () => decodeUrlComponent(fm),
-      catch: (err: unknown) =>
-        new Error(`${messages.errors.antiCodeDecodeFailed}: ${err}`),
+      catch: (err: unknown) => new Error(`${messages.errors.antiCodeDecodeFailed}: ${err}`),
     });
     const secretPrefix = base64Decode(decodedFm.split("_")[0] ?? "");
 
@@ -89,8 +81,7 @@ function buildAntiCode(
       wsTime = (nowSecs + 24 * 60 * 60).toString(16);
     }
 
-    const secretStr =
-      `${secretPrefix}_${convertUid}_${streamName}_${secretHash}_${wsTime}`;
+    const secretStr = `${secretPrefix}_${convertUid}_${streamName}_${secretHash}_${wsTime}`;
     const wsSecret = md5Hex(secretStr);
     const fs = params.get("fs") ?? messages.stream.antiCode.fsDefault;
     const encodedFm = encodeURIComponent(params.get("fm") ?? "");
@@ -116,10 +107,9 @@ function md5Hex(input: string): string {
 }
 
 function rotl64(value: bigint): bigint {
-  const low = value & BigInt(0xFFFFFFFF);
-  const rotated = ((low << BigInt(8)) | (low >> BigInt(24))) &
-    BigInt(0xFFFFFFFF);
-  return rotated | (value & ~BigInt(0xFFFFFFFF));
+  const low = value & BigInt(0xffffffff);
+  const rotated = ((low << BigInt(8)) | (low >> BigInt(24))) & BigInt(0xffffffff);
+  return rotated | (value & ~BigInt(0xffffffff));
 }
 
 function decodeUrlComponent(input: string): string {

@@ -1,10 +1,7 @@
 import { Effect } from "effect";
 import type { ResolvedStream, Resolver } from "@stream-fetcher/core/types";
 import { type HlsError, HlsSource } from "@stream-fetcher/core/sources/hls";
-import {
-  HttpSource,
-  type HttpSourceError,
-} from "@stream-fetcher/core/sources/http";
+import { HttpSource, type HttpSourceError } from "@stream-fetcher/core/sources/http";
 import { messages } from "@stream-fetcher/huya/messages";
 import { fetchRoomPage } from "./fetch_room_page.ts";
 import { extractRoomProfile } from "./extract_room_profile.ts";
@@ -29,8 +26,7 @@ export interface HuyaResolverOptions {
 }
 
 /** Resolves Huya live room URLs into a ResolvedStream. */
-export class HuyaResolver
-  implements Resolver<HuyaResolverOptions, HttpSourceError | HlsError> {
+export class HuyaResolver implements Resolver<HuyaResolverOptions, HttpSourceError | HlsError> {
   readonly platform = messages.platform;
   readonly #roomPattern = /(?:https?:\/\/)?(?:www\.|m\.)?huya\.com\/([\w-]+)/;
 
@@ -45,18 +41,11 @@ export class HuyaResolver
     return Effect.gen(function* () {
       const match = resolver.#roomPattern.exec(url);
       if (!match) {
-        return yield* Effect.fail(
-          new Error(`${messages.errors.invalidUrl}: ${url}`),
-        );
+        return yield* Effect.fail(new Error(`${messages.errors.invalidUrl}: ${url}`));
       }
       const roomId = match[1];
 
-      const {
-        protocol = HuyaProtocol.Flv,
-        cdn,
-        maxRatio = 0,
-        _webBase,
-      } = options;
+      const { protocol = HuyaProtocol.Flv, cdn, maxRatio = 0, _webBase } = options;
 
       const isHls = protocol === HuyaProtocol.Hls;
       const headers = {
@@ -79,9 +68,7 @@ export class HuyaResolver
 
       const profile = yield* extractRoomProfile(page);
       if (!profile) {
-        return yield* Effect.fail(
-          new Error(messages.errors.offlineOrMissingData),
-        );
+        return yield* Effect.fail(new Error(messages.errors.offlineOrMissingData));
       }
 
       if (isReplay(profile.title, messages.replayMarkers)) {

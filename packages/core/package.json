@@ -1,22 +1,24 @@
 {
   "name": "@stream-fetcher/core",
   "version": "0.1.0",
+  "type": "module",
+  "main": "./mod.ts",
   "exports": {
     ".": "./mod.ts",
     "./types": "./src/types.ts",
     "./messages": "./src/messages.ts",
     "./recorder": "./src/recorder.ts",
     "./sources/http": "./src/sources/http.ts",
+    "./sources/hls": "./src/sources/hls.ts",
     "./errors/http": "./src/errors/http.ts",
     "./errors/hls": "./src/errors/hls.ts",
-    "./sources/hls": "./src/sources/hls.ts",
     "./sinks/file": "./src/sinks/file.ts",
     "./sinks/stdout": "./src/sinks/stdout.ts",
     "./sinks/s3": "./src/sinks/s3.ts",
     "./utils/s3_sign": "./src/utils/s3_sign.ts",
-    "./adapters/deno": "./src/adapters/deno.ts"
+    "./adapters/bun": "./src/adapters/bun.ts"
   },
-  "tasks": {
-    "test": "deno test --allow-all"
+  "dependencies": {
+    "effect": "3.21.4"
   }
 }

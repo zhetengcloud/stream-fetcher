@@ -1,26 +1,29 @@
-import { assertEquals, assertExists } from "@std/assert";
+import { expect, test } from "bun:test";
 import { Effect } from "effect";
 import { BilibiliProtocol, BilibiliResolver } from "@stream-fetcher/bilibili";
 
-Deno.test("BilibiliResolver resolves a room URL into a Source", async () => {
+test("BilibiliResolver resolves a room URL into a Source", async () => {
   const resolver = new BilibiliResolver();
 
-  const server = Deno.serve({ port: 0 }, (request) => {
-    const url = new URL(request.url);
-    if (url.pathname === "/room/v1/Room/playUrl") {
-      return Response.json({
-        code: 0,
-        data: {
-          current_qn: 10000,
-          quality_description: [{ qn: 10000, desc: "原画" }],
-          durl: [{ url: "https://live.example.com/stream.flv" }],
-        },
-      });
-    }
-    return new Response("not found", { status: 404 });
+  const server = Bun.serve({
+    port: 0,
+    fetch: (request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/room/v1/Room/playUrl") {
+        return Response.json({
+          code: 0,
+          data: {
+            current_qn: 10000,
+            quality_description: [{ qn: 10000, desc: "原画" }],
+            durl: [{ url: "https://live.example.com/stream.flv" }],
+          },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    },
   });
 
-  const port = (server.addr as Deno.NetAddr).port;
+  const port = server.port;
 
   try {
     const resolved = await Effect.runPromise(
@@ -31,23 +34,20 @@ Deno.test("BilibiliResolver resolves a room URL into a Source", async () => {
       }),
     );
 
-    assertEquals(resolved.source.name, "bilibili");
-    assertExists(resolved.source.open);
-    assertEquals(resolved.metadata.platform, "bilibili");
-    assertEquals(resolved.metadata.format, BilibiliProtocol.Flv);
-    assertEquals(resolved.metadata.roomId, "12345");
-    assertEquals(
-      resolved.metadata.playUrl,
-      "https://live.example.com/stream.flv",
-    );
+    expect(resolved.source.name).toBe("bilibili");
+    expect(resolved.source.open).toBeDefined();
+    expect(resolved.metadata.platform).toBe("bilibili");
+    expect(resolved.metadata.format).toBe(BilibiliProtocol.Flv);
+    expect(resolved.metadata.roomId).toBe("12345");
+    expect(resolved.metadata.playUrl).toBe("https://live.example.com/stream.flv");
   } finally {
-    await server.shutdown();
+    await server.stop();
   }
 });
 
-Deno.test("BilibiliResolver canHandle recognizes room URLs", () => {
+test("BilibiliResolver canHandle recognizes room URLs", () => {
   const resolver = new BilibiliResolver();
-  assertEquals(resolver.canHandle("https://live.bilibili.com/12345"), true);
-  assertEquals(resolver.canHandle("https://www.bilibili.com/12345"), true);
-  assertEquals(resolver.canHandle("https://youtube.com/12345"), false);
+  expect(resolver.canHandle("https://live.bilibili.com/12345")).toBe(true);
+  expect(resolver.canHandle("https://www.bilibili.com/12345")).toBe(true);
+  expect(resolver.canHandle("https://youtube.com/12345")).toBe(false);
 });

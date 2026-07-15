@@ -111,9 +111,7 @@ function abortableStream<A, E, R>(
   return source.pipe(Stream.interruptWhen(abortEffect(signal)));
 }
 
-function abortEffect(
-  signal: AbortSignal | undefined,
-): Effect.Effect<void, never, never> {
+function abortEffect(signal: AbortSignal | undefined): Effect.Effect<void, never, never> {
   if (!signal) return Effect.never;
   if (signal.aborted) return Effect.void;
   return Effect.async<void>((resume) => {

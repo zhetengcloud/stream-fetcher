@@ -7,4 +7,4 @@ export * from "./src/sinks/file.ts";
 export * from "./src/sinks/stdout.ts";
 export * from "./src/sinks/s3.ts";
 export * from "./src/utils/s3_sign.ts";
-export * from "./src/adapters/deno.ts";
+export * from "./src/adapters/bun.ts";

@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { expect, test } from "bun:test";
 import { Effect, Stream } from "effect";
 import { FileSink } from "@stream-fetcher/core";
 import type { FileSystem } from "@stream-fetcher/core";
@@ -38,13 +38,11 @@ function createInMemoryFs(): {
   return { fs, files };
 }
 
-function byteStream(
-  chunks: Uint8Array[],
-): Stream.Stream<Uint8Array, Error, never> {
+function byteStream(chunks: Uint8Array[]): Stream.Stream<Uint8Array, Error, never> {
   return Stream.fromIterable(chunks);
 }
 
-Deno.test("FileSink writes chunks through the supplied FileSystem", async () => {
+test("FileSink writes chunks through the supplied FileSystem", async () => {
   const { fs, files } = createInMemoryFs();
   const sink = new FileSink();
   const source = byteStream([
@@ -55,8 +53,5 @@ Deno.test("FileSink writes chunks through the supplied FileSystem", async () => 
 
   await Effect.runPromise(sink.write(source, { path: "/tmp/foo.bin", fs }));
 
-  assertEquals(
-    new TextDecoder().decode(files.get("/tmp/foo.bin")),
-    "hello world",
-  );
+  expect(new TextDecoder().decode(files.get("/tmp/foo.bin"))).toBe("hello world");
 });

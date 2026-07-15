@@ -56,10 +56,7 @@ interface ProgressMetrics {
 interface Resolver<T = unknown> {
   readonly platform: string;
   canHandle(url: string): boolean;
-  resolve(
-    url: string,
-    options?: T,
-  ): Effect.Effect<ResolvedStream, Error, never>;
+  resolve(url: string, options?: T): Effect.Effect<ResolvedStream, Error, never>;
 }
 ```
 
@@ -98,10 +95,7 @@ interface DetectorOptions {
 }
 
 interface StreamDetector {
-  waitForLive(
-    source: Source,
-    options: DetectorOptions,
-  ): Stream.Stream<Uint8Array, Error, never>;
+  waitForLive(source: Source, options: DetectorOptions): Stream.Stream<Uint8Array, Error, never>;
 }
 ```
 
@@ -115,13 +109,13 @@ The library is designed for microservices / Kubernetes, not an end-user CLI.
 
 ## Milestones
 
-| M  | Deliverable                                            | Status  |
-| -- | ------------------------------------------------------ | ------- |
-| M1 | Core: interfaces, `HttpSource`, `FileSink`, `record()` | ✅ Done |
-| M2 | `S3Sink`, graceful abort and single-sink `record()`    | ✅ Done |
-| M3 | Workspace migration + Bilibili + Huya resolvers        | ✅ Done |
-| M4 | README + Effect integration + adapter helpers          | ✅ Done |
-| M5 | Extract platform strings to dedicated `messages.ts`    | ✅ Done |
-| M6 | Remove Promise-based APIs, adopt Effect-TS only        | ✅ Done |
+| M   | Deliverable                                            | Status  |
+| --- | ------------------------------------------------------ | ------- |
+| M1  | Core: interfaces, `HttpSource`, `FileSink`, `record()` | ✅ Done |
+| M2  | `S3Sink`, graceful abort and single-sink `record()`    | ✅ Done |
+| M3  | Workspace migration + Bilibili + Huya resolvers        | ✅ Done |
+| M4  | README + Effect integration + adapter helpers          | ✅ Done |
+| M5  | Extract platform strings to dedicated `messages.ts`    | ✅ Done |
+| M6  | Remove Promise-based APIs, adopt Effect-TS only        | ✅ Done |
 
 **On hold:** YouTube / Twitch resolvers.

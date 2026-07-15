@@ -30,21 +30,13 @@ const ROOM_DATA_END = ";";
 const STREAM_OBJECT_MARKER = "stream: ";
 
 /** Extracts the Huya room profile from the HTML page as an Effect. */
-export function extractRoomProfile(
-  page: string,
-): Effect.Effect<RoomProfile | null, Error, never> {
+export function extractRoomProfile(page: string): Effect.Effect<RoomProfile | null, Error, never> {
   return Effect.gen(function* () {
-    const roomData = yield* extractJsonAfter(
-      page,
-      ROOM_DATA_PATTERN,
-      ROOM_DATA_END,
-    );
+    const roomData = yield* extractJsonAfter(page, ROOM_DATA_PATTERN, ROOM_DATA_END);
     const roomState = typeof roomData.state === "string" ? roomData.state : "";
 
     const stream = yield* extractStreamJson(page);
-    const bitrateInfo = Array.isArray(stream.vMultiStreamInfo)
-      ? stream.vMultiStreamInfo
-      : [];
+    const bitrateInfo = Array.isArray(stream.vMultiStreamInfo) ? stream.vMultiStreamInfo : [];
 
     if (roomState !== "ON" || bitrateInfo.length === 0) {
       return null;
@@ -61,23 +53,18 @@ export function extractRoomProfile(
       return yield* Effect.fail(new Error(messages.errors.liveInfoEmpty));
     }
 
-    const streamInfo = Array.isArray(first.gameStreamInfoList)
-      ? first.gameStreamInfoList
-      : [];
+    const streamInfo = Array.isArray(first.gameStreamInfoList) ? first.gameStreamInfoList : [];
     if (streamInfo.length === 0) {
       return null;
     }
 
     return {
-      title: typeof gameLiveInfo.introduction === "string"
-        ? gameLiveInfo.introduction
-        : "",
-      cover: typeof gameLiveInfo.screenshot === "string"
-        ? gameLiveInfo.screenshot.replace(/^http:/, "https:")
-        : "",
-      maxBitrate: typeof gameLiveInfo.bitRate === "number"
-        ? gameLiveInfo.bitRate
-        : 0,
+      title: typeof gameLiveInfo.introduction === "string" ? gameLiveInfo.introduction : "",
+      cover:
+        typeof gameLiveInfo.screenshot === "string"
+          ? gameLiveInfo.screenshot.replace(/^http:/, "https:")
+          : "",
+      maxBitrate: typeof gameLiveInfo.bitRate === "number" ? gameLiveInfo.bitRate : 0,
       bitrateInfo: bitrateInfo as BitrateInfo[],
       streamInfo: streamInfo as StreamInfo[],
     };
@@ -102,15 +89,12 @@ function extractJsonAfter(
     const jsonText = page.slice(start, endIdx).trim();
     return yield* Effect.try({
       try: () => JSON.parse(jsonText) as Record<string, unknown>,
-      catch: (err: unknown) =>
-        new Error(`${messages.errors.roomDataParseFailed}: ${err}`),
+      catch: (err: unknown) => new Error(`${messages.errors.roomDataParseFailed}: ${err}`),
     });
   });
 }
 
-function extractStreamJson(
-  page: string,
-): Effect.Effect<Record<string, unknown>, Error, never> {
+function extractStreamJson(page: string): Effect.Effect<Record<string, unknown>, Error, never> {
   return Effect.gen(function* () {
     const marker = STREAM_OBJECT_MARKER;
     const start = page.indexOf(marker);
@@ -120,15 +104,12 @@ function extractStreamJson(
     const valueStart = start + marker.length;
     const end = findJsonValueEnd(page, valueStart);
     if (end === -1) {
-      return yield* Effect.fail(
-        new Error(messages.errors.streamDataIncomplete),
-      );
+      return yield* Effect.fail(new Error(messages.errors.streamDataIncomplete));
     }
     const jsonText = page.slice(valueStart, end).trim();
     return yield* Effect.try({
       try: () => JSON.parse(jsonText) as Record<string, unknown>,
-      catch: (err: unknown) =>
-        new Error(`${messages.errors.streamDataParseFailed}: ${err}`),
+      catch: (err: unknown) => new Error(`${messages.errors.streamDataParseFailed}: ${err}`),
     });
   });
 }
@@ -141,7 +122,7 @@ function findJsonValueEnd(input: string, start: number): number {
   }
 
   const opening = bytes[idx];
-  const closing = opening === 0x7B ? 0x7D : opening === 0x5B ? 0x5D : 0;
+  const closing = opening === 0x7b ? 0x7d : opening === 0x5b ? 0x5d : 0;
   if (!closing) return -1;
 
   let depth = 0;
@@ -153,7 +134,7 @@ function findJsonValueEnd(input: string, start: number): number {
     if (inString) {
       if (escaped) {
         escaped = false;
-      } else if (byte === 0x5C) {
+      } else if (byte === 0x5c) {
         escaped = true;
       } else if (byte === 0x22) {
         inString = false;
@@ -163,9 +144,9 @@ function findJsonValueEnd(input: string, start: number): number {
 
     if (byte === 0x22) {
       inString = true;
-    } else if (byte === 0x7B || byte === 0x5B) {
+    } else if (byte === 0x7b || byte === 0x5b) {
       depth++;
-    } else if (byte === 0x7D || byte === 0x5D) {
+    } else if (byte === 0x7d || byte === 0x5d) {
       if (depth === 0) return -1;
       depth--;
       if (depth === 0 && byte === closing) {
@@ -178,5 +159,5 @@ function findJsonValueEnd(input: string, start: number): number {
 }
 
 function isAsciiWhitespace(byte: number): boolean {
-  return byte === 0x20 || byte === 0x09 || byte === 0x0A || byte === 0x0D;
+  return byte === 0x20 || byte === 0x09 || byte === 0x0a || byte === 0x0d;
 }

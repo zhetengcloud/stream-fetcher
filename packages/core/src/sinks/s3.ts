@@ -81,9 +81,7 @@ class S3MultipartClient {
     };
   }
 
-  write(
-    stream: Stream.Stream<Uint8Array, Error, never>,
-  ): Effect.Effect<void, Error, never> {
+  write(stream: Stream.Stream<Uint8Array, Error, never>): Effect.Effect<void, Error, never> {
     return Effect.gen(this, function* () {
       const uploadId = yield* this.#createMultipartUpload();
       const state = yield* Ref.make<UploadState>({
@@ -99,9 +97,7 @@ class S3MultipartClient {
 
       yield* upload.pipe(
         Effect.catchAll((err) =>
-          this.#abortMultipartUpload(uploadId).pipe(
-            Effect.flatMap(() => Effect.fail(err)),
-          )
+          this.#abortMultipartUpload(uploadId).pipe(Effect.flatMap(() => Effect.fail(err))),
         ),
       );
 
@@ -133,10 +129,7 @@ class S3MultipartClient {
    * queue, uploads them, and keeps whatever is left for the next chunk or the
    * final flush.
    */
-  #flushParts(
-    state: Ref.Ref<UploadState>,
-    uploadId: string,
-  ): Effect.Effect<void, Error, never> {
+  #flushParts(state: Ref.Ref<UploadState>, uploadId: string): Effect.Effect<void, Error, never> {
     return Effect.gen(this, function* () {
       while (true) {
         const current = yield* Ref.get(state);
@@ -148,20 +141,13 @@ class S3MultipartClient {
           this.#options.partSize,
         );
 
-        const etag = yield* this.#uploadPart(
-          part,
-          current.partNumber,
-          uploadId,
-        );
+        const etag = yield* this.#uploadPart(part, current.partNumber, uploadId);
 
         yield* Ref.set(state, {
           chunks: remainingChunks,
           bufferedLength: remainingLength,
           partNumber: current.partNumber + 1,
-          parts: [
-            ...current.parts,
-            { PartNumber: current.partNumber, ETag: etag },
-          ],
+          parts: [...current.parts, { PartNumber: current.partNumber, ETag: etag }],
         });
       }
     });
@@ -182,19 +168,9 @@ class S3MultipartClient {
         return;
       }
       // Concatenate leftovers only once, at the very end.
-      const finalPart = concatChunks(
-        current.chunks,
-        current.bufferedLength,
-      );
-      const etag = yield* this.#uploadPart(
-        finalPart,
-        current.partNumber,
-        uploadId,
-      );
-      const parts = [
-        ...current.parts,
-        { PartNumber: current.partNumber, ETag: etag },
-      ];
+      const finalPart = concatChunks(current.chunks, current.bufferedLength);
+      const etag = yield* this.#uploadPart(finalPart, current.partNumber, uploadId);
+      const parts = [...current.parts, { PartNumber: current.partNumber, ETag: etag }];
       yield* this.#completeMultipartUpload(uploadId, parts);
     });
   }
@@ -229,24 +205,20 @@ class S3MultipartClient {
             body: new Uint8Array(0) as BodyInit,
             signal: this.#options.signal,
           }),
-        catch: (err) => err instanceof Error ? err : new Error(String(err)),
+        catch: (err) => (err instanceof Error ? err : new Error(String(err))),
       });
 
       if (!response.ok) {
         const text = yield* Effect.tryPromise(() => response.text());
         return yield* Effect.fail(
-          new Error(
-            `${messages.errors.s3CreateMultipartUploadFailed}: ${response.status} ${text}`,
-          ),
+          new Error(`${messages.errors.s3CreateMultipartUploadFailed}: ${response.status} ${text}`),
         );
       }
 
       const xml = yield* Effect.tryPromise(() => response.text());
       const match = xml.match(/<UploadId>(.+?)<\/UploadId>/);
       if (!match) {
-        return yield* Effect.fail(
-          new Error(messages.errors.s3UploadIdNotFound),
-        );
+        return yield* Effect.fail(new Error(messages.errors.s3UploadIdNotFound));
       }
       return match[1];
     });
@@ -282,23 +254,19 @@ class S3MultipartClient {
             body: body as BodyInit,
             signal: this.#options.signal,
           }),
-        catch: (err) => err instanceof Error ? err : new Error(String(err)),
+        catch: (err) => (err instanceof Error ? err : new Error(String(err))),
       });
 
       if (!response.ok) {
         const text = yield* Effect.tryPromise(() => response.text());
         return yield* Effect.fail(
-          new Error(
-            `${messages.errors.s3UploadPartFailed}: ${response.status} ${text}`,
-          ),
+          new Error(`${messages.errors.s3UploadPartFailed}: ${response.status} ${text}`),
         );
       }
 
       const etag = response.headers.get("ETag");
       if (!etag) {
-        return yield* Effect.fail(
-          new Error(messages.errors.s3EtagMissing),
-        );
+        return yield* Effect.fail(new Error(messages.errors.s3EtagMissing));
       }
       return etag;
     });
@@ -316,8 +284,7 @@ class S3MultipartClient {
         `<CompleteMultipartUpload>` +
           parts
             .map(
-              (p) =>
-                `<Part><PartNumber>${p.PartNumber}</PartNumber><ETag>${p.ETag}</ETag></Part>`,
+              (p) => `<Part><PartNumber>${p.PartNumber}</PartNumber><ETag>${p.ETag}</ETag></Part>`,
             )
             .join("") +
           `</CompleteMultipartUpload>`,
@@ -343,7 +310,7 @@ class S3MultipartClient {
             body: body as BodyInit,
             signal: this.#options.signal,
           }),
-        catch: (err) => err instanceof Error ? err : new Error(String(err)),
+        catch: (err) => (err instanceof Error ? err : new Error(String(err))),
       });
 
       if (!response.ok) {
@@ -381,7 +348,7 @@ class S3MultipartClient {
             headers,
             signal: this.#options.signal,
           }).then(() => undefined),
-        catch: (err) => err instanceof Error ? err : new Error(String(err)),
+        catch: (err) => (err instanceof Error ? err : new Error(String(err))),
       }).pipe(Effect.orElse(() => Effect.void));
     }).pipe(Effect.catchAll(() => Effect.void));
   }
