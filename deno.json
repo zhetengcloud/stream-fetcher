@@ -2,6 +2,7 @@
   "name": "@stream-fetcher/root",
   "version": "0.1.0",
   "exports": {},
+  "nodeModulesDir": "auto",
   "workspace": [
     "packages/core",
     "packages/bilibili",
@@ -11,5 +12,8 @@
     "@std/assert": "jsr:@std/assert@1",
     "effect": "npm:effect@3.21.4",
     "md5": "npm:md5@2"
+  },
+  "tasks": {
+    "lint": "eslint ."
   }
 }

@@ -31,7 +31,7 @@ function createMockS3Server(): {
 
         if (url.searchParams.has("uploads")) {
           return new Response(
-            `?<?xml version="1.0" encoding="UTF-8"?><InitiateMultipartUploadResult><UploadId>test-upload-id<\/UploadId><\/InitiateMultipartUploadResult>`,
+            `?<?xml version="1.0" encoding="UTF-8"?><InitiateMultipartUploadResult><UploadId>test-upload-id</UploadId></InitiateMultipartUploadResult>`,
             { headers: { "Content-Type": "application/xml" } },
           );
         }
@@ -45,7 +45,7 @@ function createMockS3Server(): {
 
         if (url.searchParams.has("uploadId")) {
           return new Response(
-            `?<?xml version="1.0" encoding="UTF-8"?><CompleteMultipartUploadResult><Location>http://mock/object.ts<\/Location><\/CompleteMultipartUploadResult>`,
+            `?<?xml version="1.0" encoding="UTF-8"?><CompleteMultipartUploadResult><Location>http://mock/object.ts</Location></CompleteMultipartUploadResult>`,
             { headers: { "Content-Type": "application/xml" } },
           );
         }

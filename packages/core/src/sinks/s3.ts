@@ -317,10 +317,10 @@ class S3MultipartClient {
           parts
             .map(
               (p) =>
-                `<Part><PartNumber>${p.PartNumber}<\/PartNumber><ETag>${p.ETag}<\/ETag><\/Part>`,
+                `<Part><PartNumber>${p.PartNumber}</PartNumber><ETag>${p.ETag}</ETag></Part>`,
             )
             .join("") +
-          `<\/CompleteMultipartUpload>`,
+          `</CompleteMultipartUpload>`,
       );
 
       const headers = yield* signRequest({

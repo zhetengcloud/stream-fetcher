@@ -51,9 +51,9 @@ conventions change.
 
 ## Lint and Format
 
-- Use Deno's built-in linter and formatter. Do not introduce separate ESLint or
-  Prettier configurations.
-- Run `deno lint` before committing to catch style and correctness issues.
+- Use **ESLint** for linting with the flat config in `eslint.config.js`.
+- Keep using `deno fmt` for formatting; do not introduce Prettier.
+- Run `deno task lint` before committing to catch style and correctness issues.
 - Run `deno fmt` before committing to ensure consistent formatting.
 - Treat lint and format failures as CI failures; always check them alongside
   tests.
