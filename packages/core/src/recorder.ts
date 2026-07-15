@@ -40,8 +40,8 @@ export function record<E = Error, K = unknown>(
       const shared = yield* Stream.share(source, { capacity: "unbounded" });
       const startTime = performance.now();
 
-      const counted = abortableStream(shared, signal);
-      const sinkWork = writeToSink(counted, sink, sinkOptions);
+      const sourceToSink = abortableStream(shared, signal);
+      const sinkWork = writeToSink(sourceToSink, sink, sinkOptions);
       const progress = progressStream(shared, startTime, options.metadata);
 
       return Stream.merge(progress, sinkWork, { haltStrategy: "either" }).pipe(
