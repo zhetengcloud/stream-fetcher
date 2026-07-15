@@ -1,22 +1,24 @@
-import { Data } from "effect";
-
-type HttpRequestErrorPayload = {
+export class HttpRequestError {
+  readonly _tag: "HttpRequestError" = "HttpRequestError";
   readonly status: number;
   readonly statusText: string;
-};
+  constructor(payload: { status: number; statusText: string }) {
+    this.status = payload.status;
+    this.statusText = payload.statusText;
+  }
+}
 
-export class HttpRequestError
-  extends Data.TaggedError("HttpRequestError")<HttpRequestErrorPayload> {}
+export class HttpResponseBodyError {
+  readonly _tag: "HttpResponseBodyError" = "HttpResponseBodyError";
+}
 
-export class HttpResponseBodyError
-  extends Data.TaggedError("HttpResponseBodyError") {}
-
-type HttpStreamErrorPayload = {
+export class HttpStreamError {
+  readonly _tag: "HttpStreamError" = "HttpStreamError";
   readonly cause: unknown;
-};
-
-export class HttpStreamError
-  extends Data.TaggedError("HttpStreamError")<HttpStreamErrorPayload> {}
+  constructor(payload: { cause: unknown }) {
+    this.cause = payload.cause;
+  }
+}
 
 export type HttpSourceError =
   | HttpRequestError
