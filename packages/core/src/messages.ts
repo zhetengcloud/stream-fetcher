@@ -21,8 +21,5 @@ export const messages = {
     chromeUserAgent:
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     hlsRefreshIntervalMs: 2000,
-    s3Region: "us-east-1",
-    s3Service: "s3",
-    s3PartSizeBytes: 8 * 1024 * 1024,
   },
 } as const;

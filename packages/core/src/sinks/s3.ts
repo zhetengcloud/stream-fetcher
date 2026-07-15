@@ -3,6 +3,10 @@ import type { Sink } from "@stream-fetcher/core/types";
 import { signRequest } from "@stream-fetcher/core/utils/s3_sign";
 import { messages } from "@stream-fetcher/core/messages";
 
+const DEFAULT_REGION = "us-east-1";
+const DEFAULT_SERVICE = "s3";
+const DEFAULT_PART_SIZE_BYTES = 8 * 1024 * 1024;
+
 export interface S3SinkOptions {
   /** S3 endpoint, e.g. https://s3.amazonaws.com or https://oss-cn-hangzhou.aliyuncs.com */
   endpoint: string | URL;
@@ -32,8 +36,13 @@ interface CompletedPart {
 }
 
 interface UploadState {
-  buffer: Uint8Array;
+  /** Pending chunks not yet uploaded. Kept as a list to avoid copying every chunk. */
+  chunks: Uint8Array[];
+  /** Total byte length of all pending chunks. */
+  bufferedLength: number;
+  /** Next part number to assign (S3 parts are 1-indexed). */
   partNumber: number;
+  /** Already-completed parts, in order. */
   parts: CompletedPart[];
 }
 
@@ -65,9 +74,9 @@ class S3MultipartClient {
       accessKeyId: options.accessKeyId,
       secretAccessKey: options.secretAccessKey,
       sessionToken: options.sessionToken ?? "",
-      region: options.region ?? messages.defaults.s3Region,
-      service: options.service ?? messages.defaults.s3Service,
-      partSize: options.partSize ?? messages.defaults.s3PartSizeBytes,
+      region: options.region ?? DEFAULT_REGION,
+      service: options.service ?? DEFAULT_SERVICE,
+      partSize: options.partSize ?? DEFAULT_PART_SIZE_BYTES,
       signal: options.signal ?? new AbortController().signal,
     };
   }
@@ -78,7 +87,8 @@ class S3MultipartClient {
     return Effect.gen(this, function* () {
       const uploadId = yield* this.#createMultipartUpload();
       const state = yield* Ref.make<UploadState>({
-        buffer: new Uint8Array(0),
+        chunks: [],
+        bufferedLength: 0,
         partNumber: 1,
         parts: [],
       });
@@ -105,35 +115,79 @@ class S3MultipartClient {
     uploadId: string,
   ): Effect.Effect<void, Error, never> {
     return Effect.gen(this, function* () {
-      const current = yield* Ref.get(state);
-      let buffer = concat(current.buffer, chunk);
-      let partNumber = current.partNumber;
-      const parts = [...current.parts];
-
-      while (buffer.length >= this.#options.partSize) {
-        const part = buffer.subarray(0, this.#options.partSize);
-        buffer = buffer.subarray(this.#options.partSize);
-        const etag = yield* this.#uploadPart(part, partNumber, uploadId);
-        parts.push({ PartNumber: partNumber, ETag: etag });
-        partNumber++;
-      }
-
-      yield* Ref.set(state, { buffer, partNumber, parts });
+      // Append the incoming chunk without copying. Concatenation only happens
+      // when we have enough bytes to form a complete S3 part.
+      yield* Ref.update(state, (current) => ({
+        ...current,
+        chunks: [...current.chunks, chunk],
+        bufferedLength: current.bufferedLength + chunk.length,
+      }));
+      yield* this.#flushParts(state, uploadId);
     });
   }
 
+  /**
+   * Uploads as many full parts as possible from the pending chunk list.
+   *
+   * Each iteration extracts exactly `partSize` bytes from the front of the
+   * queue, uploads them, and keeps whatever is left for the next chunk or the
+   * final flush.
+   */
+  #flushParts(
+    state: Ref.Ref<UploadState>,
+    uploadId: string,
+  ): Effect.Effect<void, Error, never> {
+    return Effect.gen(this, function* () {
+      while (true) {
+        const current = yield* Ref.get(state);
+        if (current.bufferedLength < this.#options.partSize) break;
+
+        const { part, remainingChunks, remainingLength } = extractPart(
+          current.chunks,
+          current.bufferedLength,
+          this.#options.partSize,
+        );
+
+        const etag = yield* this.#uploadPart(
+          part,
+          current.partNumber,
+          uploadId,
+        );
+
+        yield* Ref.set(state, {
+          chunks: remainingChunks,
+          bufferedLength: remainingLength,
+          partNumber: current.partNumber + 1,
+          parts: [
+            ...current.parts,
+            { PartNumber: current.partNumber, ETag: etag },
+          ],
+        });
+      }
+    });
+  }
+
+  /**
+   * Uploads any remaining bytes after the stream ends and completes the
+   * multipart upload.
+   */
   #flushRemainingAndComplete(
     state: Ref.Ref<UploadState>,
     uploadId: string,
   ): Effect.Effect<void, Error, never> {
     return Effect.gen(this, function* () {
       const current = yield* Ref.get(state);
-      if (current.buffer.length === 0) {
+      if (current.bufferedLength === 0) {
         yield* this.#completeMultipartUpload(uploadId, current.parts);
         return;
       }
+      // Concatenate leftovers only once, at the very end.
+      const finalPart = concatChunks(
+        current.chunks,
+        current.bufferedLength,
+      );
       const etag = yield* this.#uploadPart(
-        current.buffer,
+        finalPart,
         current.partNumber,
         uploadId,
       );
@@ -154,6 +208,8 @@ class S3MultipartClient {
         method: "POST",
         url: uploadUrl,
         headers: {
+          // SHA-256 of an empty body. AWS SigV4 requires x-amz-content-sha256
+          // for every request; initiate-multipart-upload has no payload.
           "x-amz-content-sha256":
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         },
@@ -331,9 +387,64 @@ class S3MultipartClient {
   }
 }
 
-function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
-  const combined = new Uint8Array(a.length + b.length);
-  combined.set(a);
-  combined.set(b, a.length);
+/**
+ * Concatenates multiple chunks into a single Uint8Array of the given length.
+ *
+ * Used once at the end of the upload for any leftover bytes that did not form
+ * a complete part.
+ */
+function concatChunks(chunks: Uint8Array[], totalLength: number): Uint8Array {
+  const combined = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    combined.set(chunk, offset);
+    offset += chunk.length;
+  }
   return combined;
+}
+
+/**
+ * Extracts `partSize` bytes from the front of the chunk list.
+ *
+ * Walks the chunk list, copying bytes into a new part buffer until it reaches
+ * `partSize`. Any fully-consumed chunks are dropped; a partially-consumed
+ * chunk is kept as a subarray remainder.
+ */
+function extractPart(
+  chunks: Uint8Array[],
+  totalLength: number,
+  partSize: number,
+): {
+  part: Uint8Array;
+  remainingChunks: Uint8Array[];
+  remainingLength: number;
+} {
+  const part = new Uint8Array(partSize);
+  let offset = 0;
+  const remainingChunks: Uint8Array[] = [];
+
+  for (const chunk of chunks) {
+    if (offset >= partSize) {
+      remainingChunks.push(chunk);
+      continue;
+    }
+    const need = partSize - offset;
+    if (chunk.length <= need) {
+      // Whole chunk fits into the remaining part space.
+      part.set(chunk, offset);
+      offset += chunk.length;
+    } else {
+      // Chunk is larger than the remaining part space: copy what fits and
+      // keep the rest for the next part.
+      part.set(chunk.subarray(0, need), offset);
+      offset += need;
+      remainingChunks.push(chunk.subarray(need));
+    }
+  }
+
+  return {
+    part,
+    remainingChunks,
+    remainingLength: totalLength - partSize,
+  };
 }
