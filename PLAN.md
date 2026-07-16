@@ -1,7 +1,7 @@
 # Stream Fetcher / Saver — Design Plan
 
-A minimal Deno/TS library that fetches a live stream and pipes it to file,
-S3/OSS, or stdout.
+A minimal Bun/TypeScript library that fetches a live stream and pipes it to
+file, S3/OSS, or stdout.
 
 References:
 
@@ -67,6 +67,10 @@ packages/
   core/               # @stream-fetcher/core
     src/
       types.ts
+      errors/
+        base.ts       # StreamFetcherError abstract base
+        http.ts       # HTTP source errors
+        hls.ts        # HLS source errors
       recorder.ts
       sources/http.ts
       sources/hls.ts
@@ -74,7 +78,7 @@ packages/
       sinks/stdout.ts
       sinks/s3.ts
       utils/s3_sign.ts
-      adapters/deno.ts
+      adapters/bun.ts
   bilibili/           # @stream-fetcher/bilibili
   huya/               # @stream-fetcher/huya
   twitch/             # @stream-fetcher/twitch (on hold)
@@ -107,6 +111,27 @@ Implementation order: Bilibili ✅ → Huya ✅. YouTube / Twitch on hold.
 
 The library is designed for microservices / Kubernetes, not an end-user CLI.
 
+## Authentication
+
+Most platforms work anonymously, but some streams or higher-quality variants
+require authentication. Auth is **platform-specific** and passed through each
+resolver's options object. Core stays auth-agnostic.
+
+- **Bilibili**
+  - Accept an optional `cookie` string (sent as the `Cookie` header).
+  - Accept an optional `cookieFile` path; load cookies from biliup's
+    `cookie_info.cookies` JSON format.
+  - Implement WBI signing for authenticated/private endpoints (e.g.
+    `getInfoByRoom`, `getRoomPlayInfo`). The existing unsigned `playUrl`
+    endpoint remains the default fallback.
+- **Huya**
+  - No user-facing authentication required; the anti-code algorithm is handled
+    internally.
+- **Future platforms (Twitch, YouTube, Douyu, etc.)**
+  - Add token / cookie / session fields to their resolver options as needed.
+  - Avoid a generic auth abstraction until a real cross-platform pattern
+    emerges.
+
 ## Milestones
 
 | M   | Deliverable                                            | Status  |
@@ -117,5 +142,5 @@ The library is designed for microservices / Kubernetes, not an end-user CLI.
 | M4  | README + Effect integration + adapter helpers          | ✅ Done |
 | M5  | Extract platform strings to dedicated `messages.ts`    | ✅ Done |
 | M6  | Remove Promise-based APIs, adopt Effect-TS only        | ✅ Done |
-
-**On hold:** YouTube / Twitch resolvers.
+| M7  | Abstract `StreamFetcherError` base class               | ✅ Done |
+| M8  | Authentication support (Bilibili cookie + WBI signing) | Planned |
