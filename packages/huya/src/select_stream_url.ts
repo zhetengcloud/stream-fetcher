@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import type { BitrateInfo } from "./extract_room_profile.ts";
-import { messages } from "@stream-fetcher/huya/messages";
+import { HuyaNoStreamUrlError } from "./errors.ts";
 
 export interface ApplyRatioOptions {
   url: string;
@@ -36,7 +36,7 @@ export interface SelectStreamUrlOptions {
 /** Selects the preferred CDN or the highest-priority available URL as an Effect. */
 export function selectStreamUrl(
   options: SelectStreamUrlOptions,
-): Effect.Effect<string, Error, never> {
+): Effect.Effect<string, HuyaNoStreamUrlError, never> {
   const { streamUrls, preferredCdn } = options;
   const selected =
     preferredCdn && preferredCdn.length > 0
@@ -44,7 +44,7 @@ export function selectStreamUrl(
       : undefined;
   const result = selected ?? streamUrls[0];
   if (!result) {
-    return Effect.fail(new Error(messages.errors.noUsableCdn));
+    return Effect.fail(new HuyaNoStreamUrlError());
   }
   return Effect.succeed(result.url);
 }

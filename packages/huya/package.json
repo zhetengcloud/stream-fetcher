@@ -6,7 +6,8 @@
   "exports": {
     ".": "./mod.ts",
     "./messages": "./src/messages.ts",
-    "./internal": "./src/internal.ts"
+    "./internal": "./src/internal.ts",
+    "./errors": "./src/errors.ts"
   },
   "dependencies": {
     "@stream-fetcher/core": "workspace:*",

@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import { messages } from "@stream-fetcher/huya/messages";
+import { HuyaFetchError, HuyaRoomPageRequestError } from "./errors.ts";
 
 export interface FetchRoomPageOptions {
   referer: string;
@@ -8,7 +9,9 @@ export interface FetchRoomPageOptions {
 }
 
 /** Fetches the Huya room HTML page as an Effect. */
-export function fetchRoomPage(options: FetchRoomPageOptions): Effect.Effect<string, Error, never> {
+export function fetchRoomPage(
+  options: FetchRoomPageOptions,
+): Effect.Effect<string, HuyaFetchError | HuyaRoomPageRequestError, never> {
   return Effect.gen(function* () {
     const base = (options.webBase ?? messages.api.webBaseUrl).replace(/\/$/, "");
     const response = yield* Effect.tryPromise({
@@ -19,16 +22,17 @@ export function fetchRoomPage(options: FetchRoomPageOptions): Effect.Effect<stri
             "user-agent": messages.api.userAgent,
           },
         }),
-      catch: (err: unknown) => (err instanceof Error ? err : new Error(String(err))),
+      catch: (err: unknown) => new HuyaFetchError({ cause: err }),
     });
 
     if (!response.ok) {
-      return yield* Effect.fail(
-        new Error(`${messages.errors.roomPageRequestFailed}: ${response.status}`),
-      );
+      return yield* Effect.fail(new HuyaRoomPageRequestError({ status: response.status }));
     }
 
-    const text = yield* Effect.tryPromise(() => response.text());
+    const text = yield* Effect.tryPromise({
+      try: (): Promise<string> => response.text(),
+      catch: (err: unknown) => new HuyaFetchError({ cause: err }),
+    });
     return decodeHtmlEntities(text);
   });
 }
