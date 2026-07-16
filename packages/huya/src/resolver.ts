@@ -1,14 +1,14 @@
 import { Effect } from "effect";
 import type { ResolvedStream, Resolver } from "@stream-fetcher/core/types";
-import { type HlsError, HlsSource } from "@stream-fetcher/core/sources/hls";
-import { HttpSource, type HttpSourceError } from "@stream-fetcher/core/sources/http";
+import { StreamFetcherError } from "@stream-fetcher/core/errors/base";
+import { HlsSource } from "@stream-fetcher/core/sources/hls";
+import { HttpSource } from "@stream-fetcher/core/sources/http";
 import { messages } from "@stream-fetcher/huya/messages";
 import {
   HuyaInvalidUrlError,
   HuyaOfflineOrMissingDataError,
   HuyaReplayError,
   HuyaRoomUnavailableError,
-  type HuyaResolverError,
 } from "./errors.ts";
 import { fetchRoomPage } from "./fetch_room_page.ts";
 import { extractRoomProfile } from "./extract_room_profile.ts";
@@ -36,10 +36,8 @@ export interface HuyaResolverOptions {
   _webBase?: string;
 }
 
-type HuyaSourceError = HttpSourceError | HlsError;
-
 /** Resolves Huya live room URLs into a ResolvedStream. */
-export class HuyaResolver implements Resolver<HuyaResolverOptions, HuyaSourceError> {
+export class HuyaResolver implements Resolver<HuyaResolverOptions, StreamFetcherError> {
   readonly platform = PLATFORM;
 
   canHandle(url: string): boolean {
@@ -49,7 +47,7 @@ export class HuyaResolver implements Resolver<HuyaResolverOptions, HuyaSourceErr
   resolve(
     url: string,
     options: HuyaResolverOptions = {},
-  ): Effect.Effect<ResolvedStream<HuyaSourceError>, HuyaResolverError, never> {
+  ): Effect.Effect<ResolvedStream<StreamFetcherError>, StreamFetcherError, never> {
     return Effect.gen(function* () {
       const match = ROOM_PATTERN.exec(url);
       if (!match) {

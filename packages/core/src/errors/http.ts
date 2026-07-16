@@ -1,20 +1,35 @@
-import { Data } from "effect";
+import { messages } from "@stream-fetcher/core/messages";
+import { StreamFetcherError } from "./base.ts";
 
-type HttpRequestErrorPayload = {
+export class HttpRequestError extends StreamFetcherError {
   readonly status: number;
   readonly statusText: string;
-};
 
-export class HttpRequestError extends Data.TaggedError(
-  "HttpRequestError",
-)<HttpRequestErrorPayload> {}
+  constructor(args: { status: number; statusText: string }) {
+    super({
+      category: "network",
+      message: `${messages.errors.httpRequestFailed}: ${args.status} ${args.statusText}`,
+    });
+    this.status = args.status;
+    this.statusText = args.statusText;
+  }
+}
 
-export class HttpResponseBodyError extends Data.TaggedError("HttpResponseBodyError") {}
+export class HttpResponseBodyError extends StreamFetcherError {
+  constructor() {
+    super({
+      category: "unexpected",
+      message: messages.errors.responseBodyIsNull,
+    });
+  }
+}
 
-type HttpStreamErrorPayload = {
-  readonly cause: unknown;
-};
-
-export class HttpStreamError extends Data.TaggedError("HttpStreamError")<HttpStreamErrorPayload> {}
-
-export type HttpSourceError = HttpRequestError | HttpResponseBodyError | HttpStreamError;
+export class HttpStreamError extends StreamFetcherError {
+  constructor(args: { cause: unknown }) {
+    super({
+      category: "network",
+      message: `${messages.errors.httpRequestFailed}: ${String(args.cause)}`,
+      cause: args.cause,
+    });
+  }
+}

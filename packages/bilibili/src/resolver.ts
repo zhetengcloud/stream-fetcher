@@ -1,7 +1,8 @@
 import { Effect } from "effect";
 import type { ResolvedStream, Resolver } from "@stream-fetcher/core/types";
-import { type HlsError, HlsSource } from "@stream-fetcher/core/sources/hls";
-import { HttpSource, type HttpSourceError } from "@stream-fetcher/core/sources/http";
+import { StreamFetcherError } from "@stream-fetcher/core/errors/base";
+import { HlsSource } from "@stream-fetcher/core/sources/hls";
+import { HttpSource } from "@stream-fetcher/core/sources/http";
 import { messages } from "@stream-fetcher/bilibili/messages";
 import {
   BilibiliFetchError,
@@ -9,7 +10,6 @@ import {
   BilibiliPlayUrlError,
   BilibiliPlayUrlRequestError,
   BilibiliStreamUrlNotFoundError,
-  type BilibiliResolverError,
 } from "./errors.ts";
 
 export const PLATFORM = "bilibili";
@@ -37,8 +37,6 @@ export interface BilibiliResolverOptions {
   _apiBase?: string;
 }
 
-type BilibiliSourceError = HttpSourceError | HlsError;
-
 type StreamUrlResult = { streamUrl: string; title?: string };
 
 interface PlayUrlResponse {
@@ -53,7 +51,7 @@ interface PlayUrlResponse {
 }
 
 /** Resolves Bilibili live room URLs into a ResolvedStream. */
-export class BilibiliResolver implements Resolver<BilibiliResolverOptions, BilibiliSourceError> {
+export class BilibiliResolver implements Resolver<BilibiliResolverOptions, StreamFetcherError> {
   readonly platform = PLATFORM;
 
   canHandle(url: string): boolean {
@@ -63,7 +61,7 @@ export class BilibiliResolver implements Resolver<BilibiliResolverOptions, Bilib
   resolve(
     url: string,
     options: BilibiliResolverOptions = {},
-  ): Effect.Effect<ResolvedStream<BilibiliSourceError>, BilibiliResolverError, never> {
+  ): Effect.Effect<ResolvedStream<StreamFetcherError>, StreamFetcherError, never> {
     return Effect.gen(function* () {
       const match = ROOM_PATTERN.exec(url);
       if (!match) {
@@ -110,7 +108,7 @@ function fetchStreamUrl(
   protocol: BilibiliProtocol,
   cookie: string | undefined,
   _apiBase: string | undefined,
-): Effect.Effect<StreamUrlResult, BilibiliResolverError, never> {
+): Effect.Effect<StreamUrlResult, StreamFetcherError, never> {
   return Effect.gen(function* () {
     const platform = platformByProtocol[protocol];
     const apiUrl = new URL(

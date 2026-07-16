@@ -1,8 +1,8 @@
 import { Chunk, Effect, Option, Stream } from "effect";
 import type { Source } from "@stream-fetcher/core/types";
 import { messages } from "@stream-fetcher/core/messages";
+import { StreamFetcherError } from "@stream-fetcher/core/errors/base";
 import {
-  type HlsError,
   PlaylistRequestError,
   PlaylistTextError,
   SegmentRequestError,
@@ -13,7 +13,6 @@ export {
   PlaylistTextError,
   SegmentRequestError,
 } from "@stream-fetcher/core/errors/hls";
-export type { HlsError } from "@stream-fetcher/core/errors/hls";
 
 /** Options for the HLS source. */
 export interface HlsSourceOptions {
@@ -40,10 +39,10 @@ export interface HlsSourceOptions {
  * `refreshIntervalMs` to fetch new segments as they appear. Playlists that
  * declare `#EXT-X-ENDLIST` are treated as finished and stop the stream.
  */
-export class HlsSource implements Source<HlsError, HlsSourceOptions> {
+export class HlsSource implements Source<StreamFetcherError, HlsSourceOptions> {
   readonly name = "hls";
 
-  open(options: HlsSourceOptions): Stream.Stream<Uint8Array, HlsError, never> {
+  open(options: HlsSourceOptions): Stream.Stream<Uint8Array, StreamFetcherError, never> {
     const baseUrl = new URL(options.playlistUrl);
     const headers = options.headers;
     const signal = options.signal ?? new AbortController().signal;
@@ -66,7 +65,7 @@ export class HlsSource implements Source<HlsError, HlsSourceOptions> {
 
 type PollResult = [Chunk.Chunk<Uint8Array>, PollState];
 
-type PollStepEffect = Effect.Effect<Option.Option<PollResult>, HlsError, never>;
+type PollStepEffect = Effect.Effect<Option.Option<PollResult>, StreamFetcherError, never>;
 
 // One iteration of the HLS polling loop. Returns Option.none() to end the stream
 // when the source is aborted, the playlist ends, or no new segments appear.
@@ -133,11 +132,7 @@ function pollStep(
   });
 }
 
-type FetchPlaylistEffect = Effect.Effect<
-  Option.Option<ParsedPlaylist>,
-  PlaylistRequestError | PlaylistTextError,
-  never
->;
+type FetchPlaylistEffect = Effect.Effect<Option.Option<ParsedPlaylist>, StreamFetcherError, never>;
 
 // Fetches and parses the playlist. Abortion is represented as Option.none();
 // actual HTTP/text failures become typed errors.
@@ -167,7 +162,7 @@ function fetchPlaylist(
   });
 }
 
-type FetchResponseEffect = Effect.Effect<Option.Option<Response>, PlaylistRequestError, never>;
+type FetchResponseEffect = Effect.Effect<Option.Option<Response>, StreamFetcherError, never>;
 
 // Fetches the playlist HTTP response. Abortion is mapped to Option.none() so it
 // can terminate the stream without being treated as a failure.
@@ -216,7 +211,7 @@ function fetchSegment(
   url: string,
   headers: Record<string, string> | undefined,
   signal: AbortSignal,
-): Effect.Effect<Uint8Array, SegmentRequestError, never> {
+): Effect.Effect<Uint8Array, StreamFetcherError, never> {
   return Effect.tryPromise({
     try: () => fetch(url, { headers, signal }),
     catch: () => new SegmentRequestError({ status: 0 }),

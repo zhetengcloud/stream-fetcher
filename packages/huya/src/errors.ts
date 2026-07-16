@@ -1,53 +1,64 @@
-import { Data } from "effect";
+import { StreamFetcherError } from "@stream-fetcher/core/errors/base";
 import { messages } from "@stream-fetcher/huya/messages";
 
-export class HuyaInvalidUrlError extends Data.TaggedError("HuyaInvalidUrlError")<{
-  url: string;
-}> {
+export class HuyaInvalidUrlError extends StreamFetcherError {
+  readonly url: string;
+
   constructor(args: { url: string }) {
-    super(args);
-    this.message = `${messages.errors.invalidUrl}: ${args.url}`;
+    super({
+      category: "invalid-input",
+      message: `${messages.errors.invalidUrl}: ${args.url}`,
+    });
+    this.url = args.url;
   }
 }
 
-export class HuyaFetchError extends Data.TaggedError("HuyaFetchError")<{
-  cause: unknown;
-}> {
+export class HuyaFetchError extends StreamFetcherError {
   constructor(args: { cause: unknown }) {
-    super(args);
-    this.message = `${messages.errors.roomPageRequestFailed}: ${String(args.cause)}`;
+    super({
+      category: "network",
+      message: `${messages.errors.roomPageRequestFailed}: ${String(args.cause)}`,
+      cause: args.cause,
+    });
   }
 }
 
-export class HuyaRoomPageRequestError extends Data.TaggedError("HuyaRoomPageRequestError")<{
-  status: number;
-}> {
+export class HuyaRoomPageRequestError extends StreamFetcherError {
+  readonly status: number;
+
   constructor(args: { status: number }) {
-    super(args);
-    this.message = `${messages.errors.roomPageRequestFailed}: ${args.status}`;
+    super({
+      category: "network",
+      message: `${messages.errors.roomPageRequestFailed}: ${args.status}`,
+    });
+    this.status = args.status;
   }
 }
 
-export class HuyaRoomUnavailableError extends Data.TaggedError("HuyaRoomUnavailableError") {
+export class HuyaRoomUnavailableError extends StreamFetcherError {
   constructor() {
-    super();
-    this.message = messages.errors.roomUnavailable;
+    super({
+      category: "stream-unavailable",
+      message: messages.errors.roomUnavailable,
+    });
   }
 }
 
-export class HuyaReplayError extends Data.TaggedError("HuyaReplayError") {
+export class HuyaReplayError extends StreamFetcherError {
   constructor() {
-    super();
-    this.message = messages.errors.replay;
+    super({
+      category: "stream-unavailable",
+      message: messages.errors.replay,
+    });
   }
 }
 
-export class HuyaOfflineOrMissingDataError extends Data.TaggedError(
-  "HuyaOfflineOrMissingDataError",
-) {
+export class HuyaOfflineOrMissingDataError extends StreamFetcherError {
   constructor() {
-    super();
-    this.message = messages.errors.offlineOrMissingData;
+    super({
+      category: "stream-unavailable",
+      message: messages.errors.offlineOrMissingData,
+    });
   }
 }
 
@@ -59,16 +70,17 @@ const roomDataMessages: Record<HuyaRoomDataErrorReason, string> = {
   "parse-failed": messages.errors.roomDataParseFailed,
 };
 
-export class HuyaRoomDataError extends Data.TaggedError("HuyaRoomDataError")<{
-  reason: HuyaRoomDataErrorReason;
-  cause?: unknown;
-}> {
+export class HuyaRoomDataError extends StreamFetcherError {
+  readonly reason: HuyaRoomDataErrorReason;
+
   constructor(args: { reason: HuyaRoomDataErrorReason; cause?: unknown }) {
-    super(args);
-    this.message =
-      args.cause !== undefined
-        ? `${roomDataMessages[args.reason]}: ${String(args.cause)}`
-        : roomDataMessages[args.reason];
+    const baseMessage = roomDataMessages[args.reason];
+    super({
+      category: "platform-data",
+      message: args.cause !== undefined ? `${baseMessage}: ${String(args.cause)}` : baseMessage,
+      cause: args.cause,
+    });
+    this.reason = args.reason;
   }
 }
 
@@ -87,43 +99,35 @@ const streamDataMessages: Record<HuyaStreamDataErrorReason, string> = {
   "live-info-empty": messages.errors.liveInfoEmpty,
 };
 
-export class HuyaStreamDataError extends Data.TaggedError("HuyaStreamDataError")<{
-  reason: HuyaStreamDataErrorReason;
-  cause?: unknown;
-}> {
+export class HuyaStreamDataError extends StreamFetcherError {
+  readonly reason: HuyaStreamDataErrorReason;
+
   constructor(args: { reason: HuyaStreamDataErrorReason; cause?: unknown }) {
-    super(args);
-    this.message =
-      args.cause !== undefined
-        ? `${streamDataMessages[args.reason]}: ${String(args.cause)}`
-        : streamDataMessages[args.reason];
+    const baseMessage = streamDataMessages[args.reason];
+    super({
+      category: "platform-data",
+      message: args.cause !== undefined ? `${baseMessage}: ${String(args.cause)}` : baseMessage,
+      cause: args.cause,
+    });
+    this.reason = args.reason;
   }
 }
 
-export class HuyaAntiCodeDecodeError extends Data.TaggedError("HuyaAntiCodeDecodeError")<{
-  cause: unknown;
-}> {
+export class HuyaAntiCodeDecodeError extends StreamFetcherError {
   constructor(args: { cause: unknown }) {
-    super(args);
-    this.message = `${messages.errors.antiCodeDecodeFailed}: ${String(args.cause)}`;
+    super({
+      category: "unexpected",
+      message: `${messages.errors.antiCodeDecodeFailed}: ${String(args.cause)}`,
+      cause: args.cause,
+    });
   }
 }
 
-export class HuyaNoStreamUrlError extends Data.TaggedError("HuyaNoStreamUrlError") {
+export class HuyaNoStreamUrlError extends StreamFetcherError {
   constructor() {
-    super();
-    this.message = messages.errors.noUsableCdn;
+    super({
+      category: "stream-unavailable",
+      message: messages.errors.noUsableCdn,
+    });
   }
 }
-
-export type HuyaResolverError =
-  | HuyaInvalidUrlError
-  | HuyaFetchError
-  | HuyaRoomPageRequestError
-  | HuyaRoomUnavailableError
-  | HuyaReplayError
-  | HuyaOfflineOrMissingDataError
-  | HuyaRoomDataError
-  | HuyaStreamDataError
-  | HuyaAntiCodeDecodeError
-  | HuyaNoStreamUrlError;

@@ -1,21 +1,36 @@
-import { Data } from "effect";
+import { messages } from "@stream-fetcher/core/messages";
+import { StreamFetcherError } from "./base.ts";
 
-type PlaylistRequestErrorPayload = { status: number };
+export class PlaylistRequestError extends StreamFetcherError {
+  readonly status: number;
 
-export class PlaylistRequestError extends Data.TaggedError(
-  "PlaylistRequestError",
-)<PlaylistRequestErrorPayload> {}
+  constructor(args: { status: number }) {
+    super({
+      category: "network",
+      message: `${messages.errors.hlsPlaylistRequestFailed}: ${args.status}`,
+    });
+    this.status = args.status;
+  }
+}
 
-type PlaylistTextErrorPayload = { cause: unknown };
+export class PlaylistTextError extends StreamFetcherError {
+  constructor(args: { cause: unknown }) {
+    super({
+      category: "platform-data",
+      message: `${messages.errors.hlsPlaylistTextReadFailed}: ${String(args.cause)}`,
+      cause: args.cause,
+    });
+  }
+}
 
-export class PlaylistTextError extends Data.TaggedError(
-  "PlaylistTextError",
-)<PlaylistTextErrorPayload> {}
+export class SegmentRequestError extends StreamFetcherError {
+  readonly status: number;
 
-type SegmentRequestErrorPayload = { status: number };
-
-export class SegmentRequestError extends Data.TaggedError(
-  "SegmentRequestError",
-)<SegmentRequestErrorPayload> {}
-
-export type HlsError = PlaylistRequestError | PlaylistTextError | SegmentRequestError;
+  constructor(args: { status: number }) {
+    super({
+      category: "network",
+      message: `${messages.errors.hlsSegmentRequestFailed}: ${args.status}`,
+    });
+    this.status = args.status;
+  }
+}

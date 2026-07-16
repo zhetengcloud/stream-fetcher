@@ -10,6 +10,7 @@
     "./recorder": "./src/recorder.ts",
     "./sources/http": "./src/sources/http.ts",
     "./sources/hls": "./src/sources/hls.ts",
+    "./errors/base": "./src/errors/base.ts",
     "./errors/http": "./src/errors/http.ts",
     "./errors/hls": "./src/errors/hls.ts",
     "./sinks/file": "./src/sinks/file.ts",

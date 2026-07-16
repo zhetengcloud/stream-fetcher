@@ -1,29 +1,61 @@
-import { Data } from "effect";
+import { StreamFetcherError } from "@stream-fetcher/core/errors/base";
+import { messages } from "@stream-fetcher/bilibili/messages";
 
-export class BilibiliInvalidUrlError extends Data.TaggedError("BilibiliInvalidUrlError")<{
-  url: string;
-}> {}
+export class BilibiliInvalidUrlError extends StreamFetcherError {
+  readonly url: string;
 
-export class BilibiliFetchError extends Data.TaggedError("BilibiliFetchError")<{
-  cause: unknown;
-}> {}
+  constructor(args: { url: string }) {
+    super({
+      category: "invalid-input",
+      message: `${messages.errors.invalidUrl}: ${args.url}`,
+    });
+    this.url = args.url;
+  }
+}
 
-export class BilibiliPlayUrlRequestError extends Data.TaggedError("BilibiliPlayUrlRequestError")<{
-  status: number;
-}> {}
+export class BilibiliFetchError extends StreamFetcherError {
+  constructor(args: { cause: unknown }) {
+    super({
+      category: "network",
+      message: `${messages.errors.playUrlRequestFailed}: ${String(args.cause)}`,
+      cause: args.cause,
+    });
+  }
+}
 
-export class BilibiliPlayUrlError extends Data.TaggedError("BilibiliPlayUrlError")<{
-  code: number;
-  message?: string;
-}> {}
+export class BilibiliPlayUrlRequestError extends StreamFetcherError {
+  readonly status: number;
 
-export class BilibiliStreamUrlNotFoundError extends Data.TaggedError(
-  "BilibiliStreamUrlNotFoundError",
-) {}
+  constructor(args: { status: number }) {
+    super({
+      category: "network",
+      message: `${messages.errors.playUrlRequestFailed}: ${args.status}`,
+    });
+    this.status = args.status;
+  }
+}
 
-export type BilibiliResolverError =
-  | BilibiliInvalidUrlError
-  | BilibiliFetchError
-  | BilibiliPlayUrlRequestError
-  | BilibiliPlayUrlError
-  | BilibiliStreamUrlNotFoundError;
+export class BilibiliPlayUrlError extends StreamFetcherError {
+  readonly code: number;
+  readonly detail?: string;
+
+  constructor(args: { code: number; message?: string }) {
+    super({
+      category: "platform-data",
+      message: `${messages.errors.playUrlError}: ${args.code}${
+        args.message ? ` - ${args.message}` : ""
+      }`,
+    });
+    this.code = args.code;
+    this.detail = args.message;
+  }
+}
+
+export class BilibiliStreamUrlNotFoundError extends StreamFetcherError {
+  constructor() {
+    super({
+      category: "stream-unavailable",
+      message: messages.errors.streamUrlNotFound,
+    });
+  }
+}

@@ -12,8 +12,4 @@ export {
   HuyaRoomUnavailableError,
   HuyaStreamDataError,
 } from "./src/errors.ts";
-export type {
-  HuyaResolverError,
-  HuyaRoomDataErrorReason,
-  HuyaStreamDataErrorReason,
-} from "./src/errors.ts";
+export type { HuyaRoomDataErrorReason, HuyaStreamDataErrorReason } from "./src/errors.ts";

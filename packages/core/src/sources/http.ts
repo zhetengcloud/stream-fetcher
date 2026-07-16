@@ -1,9 +1,9 @@
 import { Effect, Match, Stream } from "effect";
 import type { Source } from "@stream-fetcher/core/types";
+import { StreamFetcherError } from "@stream-fetcher/core/errors/base";
 import {
   HttpRequestError,
   HttpResponseBodyError,
-  type HttpSourceError,
   HttpStreamError,
 } from "@stream-fetcher/core/errors/http";
 
@@ -12,7 +12,6 @@ export {
   HttpResponseBodyError,
   HttpStreamError,
 } from "@stream-fetcher/core/errors/http";
-export type { HttpSourceError } from "@stream-fetcher/core/errors/http";
 
 /** Options for the generic HTTP(S) source. */
 export interface HttpSourceOptions {
@@ -22,10 +21,10 @@ export interface HttpSourceOptions {
 }
 
 /** Fetches a raw HTTP(S) stream and exposes it as a Source. */
-export class HttpSource implements Source<HttpSourceError, HttpSourceOptions> {
+export class HttpSource implements Source<StreamFetcherError, HttpSourceOptions> {
   readonly name = "http";
 
-  open(options: HttpSourceOptions): Stream.Stream<Uint8Array, HttpSourceError, never> {
+  open(options: HttpSourceOptions): Stream.Stream<Uint8Array, StreamFetcherError, never> {
     return Stream.fromEffect(fetchResponse(options)).pipe(
       Stream.flatMap((response) =>
         Stream.fromReadableStream(
@@ -37,7 +36,7 @@ export class HttpSource implements Source<HttpSourceError, HttpSourceOptions> {
   }
 }
 
-type FetchResponseEffect = Effect.Effect<ReadableStream<Uint8Array>, HttpSourceError, never>;
+type FetchResponseEffect = Effect.Effect<ReadableStream<Uint8Array>, StreamFetcherError, never>;
 
 function fetchResponse(options: HttpSourceOptions): FetchResponseEffect {
   return Effect.tryPromise({
@@ -46,7 +45,7 @@ function fetchResponse(options: HttpSourceOptions): FetchResponseEffect {
         headers: options.headers,
         signal: options.signal,
       }),
-    catch: (err: unknown): HttpSourceError =>
+    catch: (err: unknown): StreamFetcherError =>
       new HttpRequestError({ status: 0, statusText: String(err) }),
   }).pipe(Effect.flatMap(handleResponse));
 }
