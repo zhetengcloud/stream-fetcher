@@ -118,50 +118,56 @@ function extractStreamJson(
   });
 }
 
-function findJsonValueEnd(input: string, start: number): number {
-  const bytes = new TextEncoder().encode(input);
-  let idx = start;
-  while (idx < bytes.length && isAsciiWhitespace(bytes[idx])) {
-    idx++;
+/**
+ * Finds the index just past the end of a JSON object or array that starts
+ * somewhere inside `input`.
+ *
+ * This is needed because the Huya page embeds JSON values inside larger
+ * JavaScript source, so `JSON.parse` alone cannot tell us where the value ends.
+ * We scan forward from `start`, skipping leading whitespace, then track string
+ * literals and balanced `{`/`}` and `[`/`]` pairs until the top-level value is
+ * closed.
+ *
+ * Returns `-1` if the value does not start with `{` or `[`, or if no matching
+ * closing bracket is found.
+ */
+export function findJsonValueEnd(input: string, start: number): number {
+  let i = start;
+  while (i < input.length && /\s/.test(input[i])) {
+    i++;
   }
 
-  const opening = bytes[idx];
-  const closing = opening === 0x7b ? 0x7d : opening === 0x5b ? 0x5d : 0;
-  if (!closing) return -1;
+  const first = input[i];
+  if (first !== "{" && first !== "[") {
+    return -1;
+  }
 
   let depth = 0;
   let inString = false;
-  let escaped = false;
 
-  for (let i = idx; i < bytes.length; i++) {
-    const byte = bytes[i];
+  for (; i < input.length; i++) {
+    const ch = input[i];
+
     if (inString) {
-      if (escaped) {
-        escaped = false;
-      } else if (byte === 0x5c) {
-        escaped = true;
-      } else if (byte === 0x22) {
+      if (ch === "\\") {
+        i++; // skip the escaped character
+      } else if (ch === '"') {
         inString = false;
       }
       continue;
     }
 
-    if (byte === 0x22) {
+    if (ch === '"') {
       inString = true;
-    } else if (byte === 0x7b || byte === 0x5b) {
+    } else if (ch === "{" || ch === "[") {
       depth++;
-    } else if (byte === 0x7d || byte === 0x5d) {
-      if (depth === 0) return -1;
+    } else if (ch === "}" || ch === "]") {
       depth--;
-      if (depth === 0 && byte === closing) {
+      if (depth === 0) {
         return i + 1;
       }
     }
   }
 
   return -1;
-}
-
-function isAsciiWhitespace(byte: number): boolean {
-  return byte === 0x20 || byte === 0x09 || byte === 0x0a || byte === 0x0d;
 }

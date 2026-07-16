@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { Effect } from "effect";
-import { extractRoomProfile } from "@stream-fetcher/huya/internal";
+import { extractRoomProfile, findJsonValueEnd } from "@stream-fetcher/huya/internal";
 
 function makePage(
   options: {
@@ -114,4 +114,40 @@ test("extractRoomProfile handles escaped JSON strings", async () => {
     ),
   );
   expect(profile?.title).toBe("回放");
+});
+
+test("findJsonValueEnd locates a simple object", () => {
+  expect(findJsonValueEnd('{"a":1}', 0)).toBe(7);
+});
+
+test("findJsonValueEnd locates an array", () => {
+  expect(findJsonValueEnd("[1,2,3]", 0)).toBe(7);
+});
+
+test("findJsonValueEnd skips leading whitespace", () => {
+  expect(findJsonValueEnd('   {"a":1}', 0)).toBe(10);
+});
+
+test("findJsonValueEnd respects the start offset", () => {
+  expect(findJsonValueEnd('prefix {"a":1} suffix', 7)).toBe(14);
+});
+
+test("findJsonValueEnd handles nested objects and arrays", () => {
+  expect(findJsonValueEnd('{"a":{"b":[1,2]},"c":"d"}', 0)).toBe(25);
+});
+
+test("findJsonValueEnd ignores braces inside strings", () => {
+  expect(findJsonValueEnd('{"a":"{}"}', 0)).toBe(10);
+});
+
+test("findJsonValueEnd ignores escaped quotes inside strings", () => {
+  expect(findJsonValueEnd('{"a":"\\""}', 0)).toBe(10);
+});
+
+test("findJsonValueEnd returns -1 for a non-JSON start", () => {
+  expect(findJsonValueEnd("not json", 0)).toBe(-1);
+});
+
+test("findJsonValueEnd returns -1 for an incomplete value", () => {
+  expect(findJsonValueEnd('{"a":1', 0)).toBe(-1);
 });
