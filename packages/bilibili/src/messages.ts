@@ -2,16 +2,11 @@ import { messages as coreMessages } from "@stream-fetcher/core/messages";
 
 /** User-facing strings, URL markers, and request constants for Bilibili. */
 export const messages = {
-  platform: "bilibili",
   api: {
     baseUrl: "https://api.live.bilibili.com",
     referer: "https://live.bilibili.com",
     userAgent: coreMessages.defaults.chromeUserAgent,
     playUrlEndpoint: "/room/v1/Room/playUrl",
-    platforms: {
-      web: "web",
-      hls: "hls",
-    },
   },
   errors: {
     invalidUrl: "Invalid Bilibili room URL",

@@ -3,11 +3,28 @@ import type { ResolvedStream, Resolver } from "@stream-fetcher/core/types";
 import { type HlsError, HlsSource } from "@stream-fetcher/core/sources/hls";
 import { HttpSource, type HttpSourceError } from "@stream-fetcher/core/sources/http";
 import { messages } from "@stream-fetcher/bilibili/messages";
+import {
+  BilibiliFetchError,
+  BilibiliInvalidUrlError,
+  BilibiliPlayUrlError,
+  BilibiliPlayUrlRequestError,
+  BilibiliStreamUrlNotFoundError,
+  type BilibiliResolverError,
+} from "./errors.ts";
+
+export const PLATFORM = "bilibili";
+
+const ROOM_PATTERN = /(?:https?:\/\/)?(?:www\.|m\.|live\.)?bilibili\.com\/(?:blanc\/|h5\/)?(\d+)/;
 
 export enum BilibiliProtocol {
   Flv = "flv",
   Hls = "hls",
 }
+
+const platformByProtocol: Record<BilibiliProtocol, string> = {
+  [BilibiliProtocol.Flv]: "web",
+  [BilibiliProtocol.Hls]: "hls",
+};
 
 export interface BilibiliResolverOptions {
   /** Preferred quality number. Defaults to 10000 (原画). */
@@ -19,6 +36,10 @@ export interface BilibiliResolverOptions {
   /** Internal: override the API base URL for tests. */
   _apiBase?: string;
 }
+
+type BilibiliSourceError = HttpSourceError | HlsError;
+
+type StreamUrlResult = { streamUrl: string; title?: string };
 
 interface PlayUrlResponse {
   code: number;
@@ -32,32 +53,26 @@ interface PlayUrlResponse {
 }
 
 /** Resolves Bilibili live room URLs into a ResolvedStream. */
-export class BilibiliResolver implements Resolver<
-  BilibiliResolverOptions,
-  HttpSourceError | HlsError
-> {
-  readonly platform = messages.platform;
-  readonly #roomPattern =
-    /(?:https?:\/\/)?(?:www\.|m\.|live\.)?bilibili\.com\/(?:blanc\/|h5\/)?(\d+)/;
+export class BilibiliResolver implements Resolver<BilibiliResolverOptions, BilibiliSourceError> {
+  readonly platform = PLATFORM;
 
   canHandle(url: string): boolean {
-    return this.#roomPattern.test(url);
+    return ROOM_PATTERN.test(url);
   }
 
   resolve(
     url: string,
     options: BilibiliResolverOptions = {},
-  ): Effect.Effect<ResolvedStream<HttpSourceError | HlsError>, Error, never> {
+  ): Effect.Effect<ResolvedStream<BilibiliSourceError>, BilibiliResolverError, never> {
     return Effect.gen(function* () {
-      const match = resolver.#roomPattern.exec(url);
+      const match = ROOM_PATTERN.exec(url);
       if (!match) {
-        return yield* Effect.fail(new Error(`${messages.errors.invalidUrl}: ${url}`));
+        return yield* Effect.fail(new BilibiliInvalidUrlError({ url }));
       }
       const roomId = match[1];
 
       const { qn = 10000, protocol = BilibiliProtocol.Flv, cookie, _apiBase } = options;
 
-      const isHls = protocol === BilibiliProtocol.Hls;
       const headers = {
         "user-agent": messages.api.userAgent,
         referer: messages.api.referer,
@@ -67,7 +82,7 @@ export class BilibiliResolver implements Resolver<
       const { streamUrl, title } = yield* fetchStreamUrl(roomId, qn, protocol, cookie, _apiBase);
 
       const metadata = {
-        platform: resolver.platform,
+        platform: PLATFORM,
         format: protocol,
         title,
         roomId,
@@ -75,30 +90,19 @@ export class BilibiliResolver implements Resolver<
         resolvedAt: new Date(),
       };
 
-      if (isHls) {
-        const source = new HlsSource();
-        return {
-          metadata,
-          source: {
-            name: messages.platform,
-            open: () => source.open({ playlistUrl: streamUrl, headers }),
-          },
-        };
-      }
-
-      const source = new HttpSource();
       return {
         metadata,
         source: {
-          name: messages.platform,
-          open: () => source.open({ url: streamUrl, headers }),
+          name: PLATFORM,
+          open: () =>
+            protocol === BilibiliProtocol.Hls
+              ? new HlsSource().open({ playlistUrl: streamUrl, headers })
+              : new HttpSource().open({ url: streamUrl, headers }),
         },
       };
     });
   }
 }
-
-const resolver = new BilibiliResolver();
 
 function fetchStreamUrl(
   roomId: string,
@@ -106,10 +110,9 @@ function fetchStreamUrl(
   protocol: BilibiliProtocol,
   cookie: string | undefined,
   _apiBase: string | undefined,
-): Effect.Effect<{ streamUrl: string; title?: string }, Error, never> {
+): Effect.Effect<StreamUrlResult, BilibiliResolverError, never> {
   return Effect.gen(function* () {
-    const platform =
-      protocol === BilibiliProtocol.Hls ? messages.api.platforms.hls : messages.api.platforms.web;
+    const platform = platformByProtocol[protocol];
     const apiUrl = new URL(
       messages.api.playUrlEndpoint,
       (_apiBase ?? messages.api.baseUrl).replace(/\/$/, "") + "/",
@@ -126,25 +129,30 @@ function fetchStreamUrl(
 
     const response = yield* Effect.tryPromise({
       try: () => fetch(apiUrl, { headers }),
-      catch: (err: unknown) => (err instanceof Error ? err : new Error(String(err))),
+      catch: (err: unknown) => new BilibiliFetchError({ cause: err }),
     });
 
     if (!response.ok) {
-      return yield* Effect.fail(
-        new Error(`${messages.errors.playUrlRequestFailed}: ${response.status}`),
-      );
+      return yield* Effect.fail(new BilibiliPlayUrlRequestError({ status: response.status }));
     }
 
-    const data = (yield* Effect.tryPromise(() => response.json())) as PlayUrlResponse;
+    const data = yield* Effect.tryPromise({
+      try: (): Promise<PlayUrlResponse> => response.json(),
+      catch: (err: unknown) =>
+        new BilibiliPlayUrlError({
+          code: -1,
+          message: `${messages.errors.playUrlError}: ${String(err)}`,
+        }),
+    });
     if (data.code !== 0) {
       return yield* Effect.fail(
-        new Error(`${messages.errors.playUrlError}: ${data.message ?? `code ${data.code}`}`),
+        new BilibiliPlayUrlError({ code: data.code, message: data.message }),
       );
     }
 
     const urls = data.data?.durl;
     if (!urls || urls.length === 0) {
-      return yield* Effect.fail(new Error(messages.errors.streamUrlNotFound));
+      return yield* Effect.fail(new BilibiliStreamUrlNotFoundError());
     }
 
     return {

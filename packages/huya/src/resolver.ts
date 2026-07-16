@@ -9,6 +9,10 @@ import { buildStreamUrls } from "./build_stream_urls.ts";
 import { applyRatio, selectStreamUrl } from "./select_stream_url.ts";
 import { isReplay } from "./replay.ts";
 
+export const PLATFORM = "huya";
+
+const ROOM_PATTERN = /(?:https?:\/\/)?(?:www\.|m\.)?huya\.com\/([\w-]+)/;
+
 export enum HuyaProtocol {
   Flv = "flv",
   Hls = "hls",
@@ -27,11 +31,10 @@ export interface HuyaResolverOptions {
 
 /** Resolves Huya live room URLs into a ResolvedStream. */
 export class HuyaResolver implements Resolver<HuyaResolverOptions, HttpSourceError | HlsError> {
-  readonly platform = messages.platform;
-  readonly #roomPattern = /(?:https?:\/\/)?(?:www\.|m\.)?huya\.com\/([\w-]+)/;
+  readonly platform = PLATFORM;
 
   canHandle(url: string): boolean {
-    return this.#roomPattern.test(url);
+    return ROOM_PATTERN.test(url);
   }
 
   resolve(
@@ -39,7 +42,7 @@ export class HuyaResolver implements Resolver<HuyaResolverOptions, HttpSourceErr
     options: HuyaResolverOptions = {},
   ): Effect.Effect<ResolvedStream<HttpSourceError | HlsError>, Error, never> {
     return Effect.gen(function* () {
-      const match = resolver.#roomPattern.exec(url);
+      const match = ROOM_PATTERN.exec(url);
       if (!match) {
         return yield* Effect.fail(new Error(`${messages.errors.invalidUrl}: ${url}`));
       }
@@ -91,7 +94,7 @@ export class HuyaResolver implements Resolver<HuyaResolverOptions, HttpSourceErr
       });
 
       const metadata = {
-        platform: resolver.platform,
+        platform: PLATFORM,
         format: protocol,
         title: profile.title,
         roomId,
@@ -106,7 +109,7 @@ export class HuyaResolver implements Resolver<HuyaResolverOptions, HttpSourceErr
         return {
           metadata,
           source: {
-            name: messages.platform,
+            name: PLATFORM,
             open: () => source.open({ playlistUrl: streamUrl, headers }),
           },
         };
@@ -116,12 +119,10 @@ export class HuyaResolver implements Resolver<HuyaResolverOptions, HttpSourceErr
       return {
         metadata,
         source: {
-          name: messages.platform,
+          name: PLATFORM,
           open: () => source.open({ url: streamUrl, headers }),
         },
       };
     });
   }
 }
-
-const resolver = new HuyaResolver();

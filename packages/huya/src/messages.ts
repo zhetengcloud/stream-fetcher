@@ -2,7 +2,6 @@ import { messages as coreMessages } from "@stream-fetcher/core/messages";
 
 /** User-facing strings, page markers, and request constants for Huya. */
 export const messages = {
-  platform: "huya",
   api: {
     webBaseUrl: "https://www.huya.com",
     userAgent: coreMessages.defaults.chromeUserAgent,
