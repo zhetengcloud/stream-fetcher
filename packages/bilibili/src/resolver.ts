@@ -13,7 +13,7 @@ import {
   BilibiliPlayUrlRequestError,
   BilibiliStreamUrlNotFoundError,
 } from "./errors.ts";
-import { WbiSigner } from "./wbi.ts";
+import { WbiSigner, type WbiKeyCache } from "./wbi.ts";
 
 export const PLATFORM = "bilibili";
 
@@ -103,8 +103,8 @@ export class BilibiliResolver implements Resolver<BilibiliResolverOptions, Strea
   readonly platform = PLATFORM;
   private readonly wbiSigner: WbiSigner;
 
-  constructor(options?: { _webInterfaceBase?: string }) {
-    this.wbiSigner = new WbiSigner(options?._webInterfaceBase);
+  constructor(options?: { _webInterfaceBase?: string; cache?: WbiKeyCache }) {
+    this.wbiSigner = new WbiSigner(options?._webInterfaceBase, options?.cache);
   }
 
   canHandle(url: string): boolean {

@@ -53,6 +53,12 @@ resolver:
 
 This mirrors biliup's WBI implementation.
 
+### Pluggable key cache
+
+`WbiSigner` accepts a `WbiKeyCache` implementation. The default is an
+in-memory cache with a two-hour TTL. You can inject a custom cache (for example,
+Redis or a shared process cache) by passing it to the resolver constructor.
+
 ## Options
 
 | Option       | Description                                       |
@@ -65,6 +71,13 @@ This mirrors biliup's WBI implementation.
 
 Only one of `cookie` or `cookieFile` is needed; `cookie` takes precedence if
 both are provided.
+
+The `BilibiliResolver` constructor also accepts:
+
+| Option              | Description                                             |
+| ------------------- | ------------------------------------------------------- |
+| `_webInterfaceBase` | Override the WBI nav endpoint base URL. For tests.      |
+| `cache`             | Custom `WbiKeyCache` implementation. Default in-memory. |
 
 ## Errors
 

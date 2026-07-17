@@ -22,6 +22,34 @@ interface NavResponse {
   };
 }
 
+/** Pluggable cache for the derived WBI mixin key. */
+export interface WbiKeyCache {
+  /** Returns the cached key, or undefined when no valid key is cached. */
+  get(): Effect.Effect<string | undefined, never, never>;
+  /** Stores a freshly derived key. */
+  set(key: string): Effect.Effect<void, never, never>;
+}
+
+/** In-memory WBI key cache with a two-hour TTL. */
+export class InMemoryWbiKeyCache implements WbiKeyCache {
+  private key: string | undefined;
+  private lastUpdate = 0;
+
+  get(): Effect.Effect<string | undefined, never, never> {
+    const now = nowSeconds();
+    if (this.key !== undefined && now - this.lastUpdate < UPDATE_INTERVAL_SECONDS) {
+      return Effect.succeed(this.key);
+    }
+    return Effect.succeed(undefined);
+  }
+
+  set(key: string): Effect.Effect<void, never, never> {
+    this.key = key;
+    this.lastUpdate = nowSeconds();
+    return Effect.void;
+  }
+}
+
 /** Extracts the filename stem from a WBI image URL (e.g. "abc123" from ".../abc123.png"). */
 function extractKey(url: string): string | undefined {
   const filename = url.split("/").pop();
@@ -67,27 +95,28 @@ function buildSignedParams(key: string, params: Map<string, string>): Map<string
  * Stateful WBI request signer.
  *
  * Fetches the per-user key pair from `/x/web-interface/nav` and caches the
- * derived mixin key for two hours, mirroring biliup's implementation.
+ * derived mixin key via the supplied {@link WbiKeyCache}. The default cache is
+ * an in-memory implementation with a two-hour TTL, matching biliup's behavior.
  */
 export class WbiSigner {
-  private key: string | undefined;
-  private lastUpdate = 0;
-
-  constructor(private readonly navBaseUrl: string = messages.api.webInterfaceBaseUrl) {}
+  constructor(
+    private readonly navBaseUrl: string = messages.api.webInterfaceBaseUrl,
+    private readonly cache: WbiKeyCache = new InMemoryWbiKeyCache(),
+  ) {}
 
   /**
    * Returns the cached mixin key, refreshing it from the nav endpoint when
-   * missing or stale.
+   * the cache is empty or expired.
    */
   private getKey(
     headers: Record<string, string>,
   ): Effect.Effect<string, BilibiliWbiKeyError | BilibiliWbiRequestError, never> {
-    const now = nowSeconds();
-    if (this.key !== undefined && now - this.lastUpdate < UPDATE_INTERVAL_SECONDS) {
-      return Effect.succeed(this.key);
-    }
-
     return Effect.gen(this, function* () {
+      const cached = yield* this.cache.get();
+      if (cached !== undefined) {
+        return cached;
+      }
+
       const url = new URL(messages.api.navEndpoint, this.navBaseUrl.replace(/\/$/, "") + "/");
       const response = yield* Effect.tryPromise({
         try: () => fetch(url, { headers }),
@@ -116,8 +145,7 @@ export class WbiSigner {
       }
 
       const key = createMixinKey(img, sub);
-      this.key = key;
-      this.lastUpdate = nowSeconds();
+      yield* this.cache.set(key);
       return key;
     });
   }

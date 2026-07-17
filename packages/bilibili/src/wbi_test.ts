@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { Effect } from "effect";
-import { WbiSigner } from "./wbi.ts";
+import { WbiSigner, type WbiKeyCache } from "./wbi.ts";
 
 const IMG_URL = "https://i0.hdslb.com/bfs/wbi/7cd084941338484aae1ad9425b8402c7.png";
 const SUB_URL = "https://i0.hdslb.com/bfs/wbi/4932caff0f74690f22ce692c3150de77.png";
@@ -73,6 +73,42 @@ test("WbiSigner fails when nav response is missing WBI keys", async () => {
     const result = await Effect.runPromise(Effect.either(signer.sign(new Map([["a", "1"]]), {})));
 
     expect(result._tag).toBe("Left");
+  } finally {
+    await server.stop();
+  }
+});
+
+test("WbiSigner uses an injected cache", async () => {
+  let setCalls = 0;
+  let getCalls = 0;
+
+  const customCache: WbiKeyCache = {
+    get: () => {
+      getCalls++;
+      return Effect.succeed(undefined);
+    },
+    set: () => {
+      setCalls++;
+      return Effect.void;
+    },
+  };
+
+  const server = Bun.serve({
+    port: 0,
+    fetch: () =>
+      Response.json({
+        data: {
+          wbi_img: { img_url: IMG_URL, sub_url: SUB_URL },
+        },
+      }),
+  });
+
+  try {
+    const signer = new WbiSigner(`http://localhost:${server.port}`, customCache);
+    await Effect.runPromise(signer.sign(new Map([["a", "1"]]), {}));
+
+    expect(getCalls).toBe(1);
+    expect(setCalls).toBe(1);
   } finally {
     await server.stop();
   }
