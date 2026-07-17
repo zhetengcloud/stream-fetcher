@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@stream-fetcher/core": "workspace:*",
-    "effect": "3.21.4"
+    "effect": "3.21.4",
+    "md5": "2.3.0"
   }
 }
